@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TableParticipant> TableParticipants => Set<TableParticipant>();
     public DbSet<PlayerAvailability> PlayerAvailabilities => Set<PlayerAvailability>();
     public DbSet<Game> Games => Set<Game>();
+    public DbSet<GuildConfig> GuildConfigs => Set<GuildConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

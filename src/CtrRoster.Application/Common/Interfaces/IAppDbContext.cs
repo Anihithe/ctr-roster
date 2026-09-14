@@ -13,6 +13,7 @@ public interface IAppDbContext
     DbSet<TableParticipant> TableParticipants { get; }
     DbSet<PlayerAvailability> PlayerAvailabilities { get; }
     DbSet<Game> Games { get; }
+    DbSet<GuildConfig> GuildConfigs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

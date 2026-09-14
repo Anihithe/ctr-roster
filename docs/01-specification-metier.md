@@ -111,16 +111,26 @@ La Card est le cœur de l'interaction utilisateur. Elle combine un Embed mis à 
 
 ---
 
-## 6. Commandes Slash (Slash Commands)
+## 6. Commandes Slash (Préfixe `/ctr-`)
 
 ### Commandes Administrateur :
-- `/admin-session-create [date] [heure] [salon optionnel]` : Crée et poste une nouvelle Card de session sur le salon configuré. Clôture automatiquement les sessions antérieures.
+- `/ctr-session-create [date] [heure] [salon optionnel]` : Crée et poste une nouvelle Card de session sur le salon configuré. Clôture automatiquement les sessions antérieures.
   - Exemples : `date: 2026-09-18` ou `date: 18/09/2026`, `heure: 20:00` ou `heure: 20h00`.
-- `/admin-game-add [nom] [min_joueurs optionnel] [max_joueurs optionnel]` : Ajoute un jeu au catalogue de l'association.
-- `/admin-game-remove [nom]` : Supprime définitivement un jeu du catalogue de l'association.
-- `/admin-game-toggle [nom_jeu]` : Active ou désactive temporairement un jeu du catalogue (évite de le proposer dans les sélecteurs).
-- `/admin-game-list` : Affiche l'ensemble des jeux enregistrés avec leur statut d'activation (`🟢 Actif` ou `⚪ Désactivé`) et leur jauge de joueurs.
+- `/ctr-config [salon optionnel] [role_admin optionnel] [auto_renouvellement optionnel]` : Affiche ou modifie la configuration dynamique du bot pour le serveur (salon de diffusion, rôle admin autorisé, activation du cycle de renouvellement automatique).
+- `/ctr-game-add [nom] [min_joueurs optionnel] [max_joueurs optionnel]` : Ajoute un jeu au catalogue de l'association.
+- `/ctr-game-remove [nom]` : Supprime définitivement un jeu du catalogue de l'association.
+- `/ctr-game-toggle [nom_jeu]` : Active ou désactive temporairement un jeu du catalogue (évite de le proposer dans les sélecteurs).
+- `/ctr-game-list` : Affiche l'ensemble des jeux enregistrés avec leur statut d'activation (`🟢 Actif` ou `⚪ Désactivé`) et leur jauge de joueurs.
 
 ### Commandes Utilisateur :
-- `/roster-info` : Présente le fonctionnement du bot, la légende et les règles de gestion des tables.
+- `/ctr-info` : Présente les informations synthétiques sur la session en cours et le fonctionnement du bot.
+
+---
+
+## 7. Cycle de Vie Automatique & Renouvellement des Sessions
+
+Le bot exécute un worker d'arrière-plan (`SessionLifecycleWorker`) inspectant l'heure locale (Europe/Paris) :
+1. **Clôture automatique à l'heure H** : Dès que l'heure prévue de la session est atteinte (ex: 23h00), le statut passe automatiquement en `SessionStatus.Closed`. La Card Discord est mise à jour avec l'en-tête `🔴 Session clôturée` et tous les boutons d'inscription sont désactivés/retirés.
+2. **Renouvellement automatique** : Si l'option est active (par défaut), le bot génère et publie immédiatement la session suivante (+7 jours, même jour et même heure) avec une nouvelle Card interactive prête pour les inscriptions de la semaine d'après.
+
 

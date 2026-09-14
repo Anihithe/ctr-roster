@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddSingleton<Discord.DiscordUiThrottler>();
         services.AddSingleton<IDiscordMessageRenderer>(sp => sp.GetRequiredService<Discord.DiscordUiThrottler>());
         services.AddHostedService(sp => sp.GetRequiredService<Discord.DiscordUiThrottler>());
+        services.AddHostedService<Discord.SessionLifecycleWorker>();
 
         return services;
     }

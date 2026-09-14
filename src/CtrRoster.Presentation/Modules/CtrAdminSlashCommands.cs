@@ -3,6 +3,7 @@ using CtrRoster.Application.Common.Interfaces;
 using CtrRoster.Application.Games.Commands;
 using CtrRoster.Application.Games.Queries;
 using CtrRoster.Application.Sessions.Commands;
+using CtrRoster.Domain.Entities;
 using CtrRoster.Infrastructure.Discord;
 using Discord;
 using Discord.Interactions;
@@ -13,7 +14,7 @@ using Microsoft.Extensions.Logging;
 
 namespace CtrRoster.Presentation.Modules;
 
-public class AdminSlashCommands(
+public class CtrAdminSlashCommands(
     CreateSessionHandler createSessionHandler,
     AddGameHandler addGameHandler,
     RemoveGameHandler removeGameHandler,
@@ -22,24 +23,97 @@ public class AdminSlashCommands(
     DiscordMessageRenderer renderer,
     IAppDbContext db,
     IConfiguration config,
-    ILogger<AdminSlashCommands> logger) : InteractionModuleBase<SocketInteractionContext>
+    ILogger<CtrAdminSlashCommands> logger) : InteractionModuleBase<SocketInteractionContext>
 {
-    private bool IsAdmin()
+    private async Task<bool> IsAdminAsync()
     {
         if (Context.User is not SocketGuildUser guildUser) return false;
         if (guildUser.GuildPermissions.Administrator) return true;
 
-        var adminRoleId = config.GetValue<ulong>("Discord:AdminRoleId");
+        var guildId = Context.Guild.Id;
+        var guildConfig = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == guildId);
+        var adminRoleId = guildConfig?.AdminRoleId ?? config.GetValue<ulong>("Discord:AdminRoleId");
+
         return adminRoleId != 0 && guildUser.Roles.Any(r => r.Id == adminRoleId);
     }
 
-    [SlashCommand("admin-session-create", "Crée et publie une nouvelle session de jeu")]
+    [SlashCommand("ctr-config", "Affiche ou configure les paramètres du bot pour ce serveur")]
+    public async Task ConfigAsync(
+        [Summary("salon", "Salon par défaut où publier les sessions de jeu")] ITextChannel? channel = null,
+        [Summary("role_admin", "Rôle administrateur pour gérer le bot")] IRole? adminRole = null,
+        [Summary("auto_renouvellement", "Activer ou désactiver l'ouverture auto de la session suivante (+7 jours)")] bool? autoRenew = null)
+    {
+        if (!await IsAdminAsync())
+        {
+            await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            return;
+        }
+
+        var guildId = Context.Guild.Id;
+        var guildConfig = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == guildId);
+
+        if (guildConfig == null)
+        {
+            guildConfig = new GuildConfig { GuildId = guildId };
+            db.GuildConfigs.Add(guildConfig);
+        }
+
+        bool hasChanges = false;
+        if (channel != null)
+        {
+            guildConfig.DefaultChannelId = channel.Id;
+            hasChanges = true;
+        }
+
+        if (adminRole != null)
+        {
+            guildConfig.AdminRoleId = adminRole.Id;
+            hasChanges = true;
+        }
+
+        if (autoRenew.HasValue)
+        {
+            guildConfig.AutoRenewSessions = autoRenew.Value;
+            hasChanges = true;
+        }
+
+        if (hasChanges)
+        {
+            await db.SaveChangesAsync();
+        }
+
+        var currentChannelStr = guildConfig.DefaultChannelId.HasValue && guildConfig.DefaultChannelId.Value != 0
+            ? $"<#{guildConfig.DefaultChannelId.Value}>"
+            : (config.GetValue<ulong>("Discord:DefaultChannelId") != 0 ? $"<#{config.GetValue<ulong>("Discord:DefaultChannelId")}> *(config globale)*" : "Non configuré");
+
+        var currentRoleStr = guildConfig.AdminRoleId.HasValue && guildConfig.AdminRoleId.Value != 0
+            ? $"<@&{guildConfig.AdminRoleId.Value}>"
+            : (config.GetValue<ulong>("Discord:AdminRoleId") != 0 ? $"<@&{config.GetValue<ulong>("Discord:AdminRoleId")}> *(config globale)*" : "Non configuré (Admins Discord)");
+
+        var renewStr = guildConfig.AutoRenewSessions
+            ? $"🟢 Activé (création automatique tous les {guildConfig.RenewIntervalDays} jours à échéance)"
+            : "⚪ Désactivé";
+
+        var embed = new EmbedBuilder()
+            .WithTitle("⚙️ Configuration CTR-Roster")
+            .WithColor(hasChanges ? Color.Green : Color.Blue)
+            .WithDescription(hasChanges ? "✅ **Paramètres mis à jour avec succès !**" : "ℹ️ **Configuration actuelle du serveur :**")
+            .AddField("Salon par défaut", currentChannelStr, inline: true)
+            .AddField("Rôle Admin", currentRoleStr, inline: true)
+            .AddField("Renouvellement auto", renewStr, inline: false)
+            .WithFooter("Pour modifier : /ctr-config salon:#nom-du-salon role_admin:@NomRole auto_renouvellement:true/false")
+            .Build();
+
+        await RespondAsync(embed: embed, ephemeral: true);
+    }
+
+    [SlashCommand("ctr-session-create", "Crée et publie une nouvelle session de jeu")]
     public async Task CreateSessionAsync(
         [Summary("date", "Date de la session (ex: 2026-09-18 ou 18/09/2026)")] string dateInput,
         [Summary("heure", "Heure de début (ex: 20:00 ou 20h00)")] string timeInput,
-        [Summary("salon", "Salon où poster la Card (défaut: salon actuel)")] ITextChannel? targetChannel = null)
+        [Summary("salon", "Salon où poster la Card (défaut: salon configuré ou actuel)")] ITextChannel? targetChannel = null)
     {
-        if (!IsAdmin())
+        if (!await IsAdminAsync())
         {
             await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
             return;
@@ -56,7 +130,8 @@ public class AdminSlashCommands(
         ITextChannel? channel = targetChannel;
         if (channel == null)
         {
-            var defaultChannelId = config.GetValue<ulong>("Discord:DefaultChannelId");
+            var guildConfig = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == Context.Guild.Id);
+            var defaultChannelId = guildConfig?.DefaultChannelId ?? config.GetValue<ulong>("Discord:DefaultChannelId");
             if (defaultChannelId != 0)
             {
                 channel = Context.Guild.GetTextChannel(defaultChannelId);
@@ -66,7 +141,7 @@ public class AdminSlashCommands(
 
         try
         {
-            // 1. Créer l'entité en base (qui clôture automatiquement les anciennes sessions)
+            // 1. Créer l'entité en base (qui clôture automatiquement les anciennes sessions ouvertes)
             var session = await createSessionHandler.HandleAsync(scheduledDate, channel.Id);
 
             // 2. Générer et poster le message initial sur le salon
@@ -127,13 +202,13 @@ public class AdminSlashCommands(
         return false;
     }
 
-    [SlashCommand("admin-game-add", "Ajoute un jeu au catalogue de l'association")]
+    [SlashCommand("ctr-game-add", "Ajoute un jeu au catalogue de l'association")]
     public async Task AddGameAsync(
         [Summary("nom", "Nom du jeu")] string name,
         [Summary("min_joueurs", "Nombre minimum de joueurs")] int? minPlayers = null,
         [Summary("max_joueurs", "Nombre maximum de joueurs")] int? maxPlayers = null)
     {
-        if (!IsAdmin())
+        if (!await IsAdminAsync())
         {
             await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
             return;
@@ -150,10 +225,10 @@ public class AdminSlashCommands(
         }
     }
 
-    [SlashCommand("admin-game-remove", "Supprime un jeu du catalogue de l'association")]
+    [SlashCommand("ctr-game-remove", "Supprime un jeu du catalogue de l'association")]
     public async Task RemoveGameAsync([Summary("nom", "Nom exact du jeu à supprimer")] string name)
     {
-        if (!IsAdmin())
+        if (!await IsAdminAsync())
         {
             await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
             return;
@@ -170,7 +245,7 @@ public class AdminSlashCommands(
         }
     }
 
-    [SlashCommand("admin-game-list", "Liste les jeux du catalogue")]
+    [SlashCommand("ctr-game-list", "Liste les jeux du catalogue")]
     public async Task ListGamesAsync()
     {
         var games = await db.Games.OrderBy(g => g.Name).ToListAsync();
@@ -198,10 +273,10 @@ public class AdminSlashCommands(
         await RespondAsync(embed: embed, ephemeral: true);
     }
 
-    [SlashCommand("admin-game-toggle", "Active ou désactive un jeu du catalogue")]
+    [SlashCommand("ctr-game-toggle", "Active ou désactive un jeu du catalogue")]
     public async Task ToggleGameAsync([Summary("nom_jeu", "Nom exact du jeu à activer/désactiver")] string gameName)
     {
-        if (!IsAdmin())
+        if (!await IsAdminAsync())
         {
             await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
             return;

@@ -8,7 +8,7 @@ namespace CtrRoster.Presentation.Modules;
 
 public class UserSlashCommands(IAppDbContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    [SlashCommand("roster-info", "Affiche les informations sur la session en cours")]
+    [SlashCommand("ctr-info", "Affiche les informations sur la session en cours")]
     public async Task RosterInfoAsync()
     {
         var channelId = Context.Channel.Id;
