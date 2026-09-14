@@ -47,11 +47,23 @@ public class BotStartupService(
             await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
 
             var devGuildId = config.GetValue<ulong>("Discord:DevGuildId");
-            if (env.IsDevelopment() && devGuildId != 0)
+            if (env.IsDevelopment())
             {
-                // Enregistrement instantané (0 seconde) sur le serveur de test
-                await interactionService.RegisterCommandsToGuildAsync(devGuildId);
-                logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur de test Dev {GuildId}", devGuildId);
+                if (devGuildId != 0)
+                {
+                    // Enregistrement instantané (0 seconde) sur le serveur de test spécifié
+                    await interactionService.RegisterCommandsToGuildAsync(devGuildId);
+                    logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur de test Dev {GuildId}", devGuildId);
+                }
+                else
+                {
+                    // Enregistrement instantané automatique sur tous les serveurs où le bot est présent
+                    foreach (var guild in client.Guilds)
+                    {
+                        await interactionService.RegisterCommandsToGuildAsync(guild.Id);
+                        logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur {GuildName} ({GuildId})", guild.Name, guild.Id);
+                    }
+                }
             }
             else
             {

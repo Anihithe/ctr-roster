@@ -52,7 +52,16 @@ public class AdminSlashCommands(
             return;
         }
 
-        var channel = targetChannel ?? (ITextChannel)Context.Channel;
+        ITextChannel? channel = targetChannel;
+        if (channel == null)
+        {
+            var defaultChannelId = config.GetValue<ulong>("Discord:DefaultChannelId");
+            if (defaultChannelId != 0)
+            {
+                channel = Context.Guild.GetTextChannel(defaultChannelId);
+            }
+        }
+        channel ??= (ITextChannel)Context.Channel;
 
         try
         {
