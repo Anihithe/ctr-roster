@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\CtrRoster.Infrastructure\CtrRoster.Infrastructure.csproj" />
@@ -20,6 +20,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseAppHost>false</UseAppHost>
+    <UserSecretsId>ab6c6ef3-5852-4719-9763-ad5b5ccb2a17</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

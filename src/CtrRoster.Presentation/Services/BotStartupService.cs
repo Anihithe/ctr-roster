@@ -41,35 +41,46 @@ public class BotStartupService(
 
         client.Ready += async () =>
         {
-            logger.LogInformation("🤖 Bot Discord connecté en tant que {Username}#{Discriminator} ({Id})",
-                client.CurrentUser.Username, client.CurrentUser.Discriminator, client.CurrentUser.Id);
-
-            await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
-
-            var devGuildId = config.GetValue<ulong>("Discord:DevGuildId");
-            if (env.IsDevelopment())
+            try
             {
-                if (devGuildId != 0)
+                logger.LogInformation("🤖 Bot Discord connecté en tant que {Username} ({Id}) - Serveurs détectés : {GuildCount}",
+                    client.CurrentUser.Username, client.CurrentUser.Id, client.Guilds.Count);
+
+                await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
+
+                var devGuildId = config.GetValue<ulong>("Discord:DevGuildId");
+                if (env.IsDevelopment())
                 {
-                    // Enregistrement instantané (0 seconde) sur le serveur de test spécifié
-                    await interactionService.RegisterCommandsToGuildAsync(devGuildId);
-                    logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur de test Dev {GuildId}", devGuildId);
+                    if (devGuildId != 0)
+                    {
+                        // Enregistrement instantané (0 seconde) sur le serveur de test spécifié
+                        await interactionService.RegisterCommandsToGuildAsync(devGuildId);
+                        logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur de test Dev {GuildId}", devGuildId);
+                    }
+                    else if (client.Guilds.Count > 0)
+                    {
+                        // Enregistrement instantané automatique sur tous les serveurs où le bot est présent
+                        foreach (var guild in client.Guilds)
+                        {
+                            await interactionService.RegisterCommandsToGuildAsync(guild.Id);
+                            logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur {GuildName} ({GuildId})", guild.Name, guild.Id);
+                        }
+                    }
+                    else
+                    {
+                        logger.LogWarning("⚠️ Le bot n'a détecté aucun serveur Discord. Pensez à l'inviter sur votre serveur avec les permissions bot et applications.commands !");
+                    }
                 }
                 else
                 {
-                    // Enregistrement instantané automatique sur tous les serveurs où le bot est présent
-                    foreach (var guild in client.Guilds)
-                    {
-                        await interactionService.RegisterCommandsToGuildAsync(guild.Id);
-                        logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur {GuildName} ({GuildId})", guild.Name, guild.Id);
-                    }
+                    // Enregistrement global pour la production
+                    await interactionService.RegisterCommandsGloballyAsync();
+                    logger.LogInformation("🌍 Slash commands enregistrées globalement.");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                // Enregistrement global pour la production
-                await interactionService.RegisterCommandsGloballyAsync();
-                logger.LogInformation("🌍 Slash commands enregistrées globalement.");
+                logger.LogError(ex, "Erreur lors de l'enregistrement des modules Discord.");
             }
         };
 

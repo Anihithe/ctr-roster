@@ -25,11 +25,7 @@ builder.Services.AddApplication();
 // Configuration Discord Socket Client
 builder.Services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
 {
-    GatewayIntents = GatewayIntents.Guilds
-                     | GatewayIntents.GuildMessages
-                     | GatewayIntents.GuildMembers
-                     | GatewayIntents.MessageContent,
-    AlwaysDownloadUsers = true,
+    GatewayIntents = GatewayIntents.Guilds,
     LogLevel = LogSeverity.Info
 }));
 
