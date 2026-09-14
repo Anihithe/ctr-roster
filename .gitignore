@@ -1,0 +1,27 @@
+# Visual Studio / .NET / Rider
+bin/
+obj/
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+*.suo
+*.userprefs
+*.pidb
+
+# Environment & Local Secrets
+appsettings.Development.json
+*.env
+*.local
+.env.*
+
+# SQLite Local Database
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
