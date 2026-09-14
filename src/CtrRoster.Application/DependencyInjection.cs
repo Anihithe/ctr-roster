@@ -26,6 +26,7 @@ public static class DependencyInjection
 
         // Games
         services.AddScoped<AddGameHandler>();
+        services.AddScoped<RemoveGameHandler>();
         services.AddScoped<ToggleGameActiveHandler>();
         services.AddScoped<GetActiveGamesHandler>();
 

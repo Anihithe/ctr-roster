@@ -103,8 +103,24 @@ La Card est le cœur de l'interaction utilisateur. Elle combine un Embed mis à 
 ```
 
 ### Composants interactifs sous la Card :
-1. **[Déclarer disponibilité]** (`session:avail:modal`) : sélection multiple de jeux + bouton pour champ libre.
-2. **[Créer une table]** (`table:create:modal`) : sélection du jeu, rôle et sélection directe optionnelle de membres.
-3. **[Rejoindre une table...]** (`table:join:select`) : liste des tables ouvertes avec rôle Joueur ou Observateur.
-4. **[Quitter ma table]** (`table:leave:current`) : désassigne l'utilisateur et le replace dans les disponibles.
-5. **[Se déclarer absent]** (`session:absent:toggle`) : retire l'utilisateur de toute table et l'inscrit en absent.
+1. **[📋 Déclarer mes souhaits]** : sélecteur multiple de jeux du catalogue + bouton pour champ libre « Autre jeu ».
+2. **[⚔️ Créer une table]** : sélecteur de jeu direct ou saisie libre avec ajout optionnel de joueurs pré-assignés.
+3. **[🎯 Rejoindre une table...]** : menu déroulant des tables actives (en tant que Joueur ou Observateur).
+4. **[🚪 Quitter ma table]** : retire le joueur de sa table actuelle et le replace dans les disponibles.
+5. **[❌ Absent]** : retire l'utilisateur de toute table et l'inscrit dans la liste des absents.
+
+---
+
+## 6. Commandes Slash (Slash Commands)
+
+### Commandes Administrateur :
+- `/admin-session-create [date] [heure] [salon optionnel]` : Crée et poste une nouvelle Card de session sur le salon configuré. Clôture automatiquement les sessions antérieures.
+  - Exemples : `date: 2026-09-18` ou `date: 18/09/2026`, `heure: 20:00` ou `heure: 20h00`.
+- `/admin-game-add [nom] [min_joueurs optionnel] [max_joueurs optionnel]` : Ajoute un jeu au catalogue de l'association.
+- `/admin-game-remove [nom]` : Supprime définitivement un jeu du catalogue de l'association.
+- `/admin-game-toggle [nom_jeu]` : Active ou désactive temporairement un jeu du catalogue (évite de le proposer dans les sélecteurs).
+- `/admin-game-list` : Affiche l'ensemble des jeux enregistrés avec leur statut d'activation (`🟢 Actif` ou `⚪ Désactivé`) et leur jauge de joueurs.
+
+### Commandes Utilisateur :
+- `/roster-info` : Présente le fonctionnement du bot, la légende et les règles de gestion des tables.
+

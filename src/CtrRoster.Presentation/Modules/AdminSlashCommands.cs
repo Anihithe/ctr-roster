@@ -16,6 +16,7 @@ namespace CtrRoster.Presentation.Modules;
 public class AdminSlashCommands(
     CreateSessionHandler createSessionHandler,
     AddGameHandler addGameHandler,
+    RemoveGameHandler removeGameHandler,
     ToggleGameActiveHandler toggleGameActiveHandler,
     GetActiveGamesHandler getActiveGamesHandler,
     DiscordMessageRenderer renderer,
@@ -34,7 +35,8 @@ public class AdminSlashCommands(
 
     [SlashCommand("admin-session-create", "Crée et publie une nouvelle session de jeu")]
     public async Task CreateSessionAsync(
-        [Summary("date_heure", "Format: yyyy-MM-dd HH:mm (ex: 2026-09-18 20:00)")] string dateTimeInput,
+        [Summary("date", "Date de la session (ex: 2026-09-18 ou 18/09/2026)")] string dateInput,
+        [Summary("heure", "Heure de début (ex: 20:00 ou 20h00)")] string timeInput,
         [Summary("salon", "Salon où poster la Card (défaut: salon actuel)")] ITextChannel? targetChannel = null)
     {
         if (!IsAdmin())
@@ -45,10 +47,9 @@ public class AdminSlashCommands(
 
         await DeferAsync(ephemeral: true);
 
-        if (!DateTime.TryParse(dateTimeInput, new CultureInfo("fr-FR"), DateTimeStyles.None, out var scheduledDate) &&
-            !DateTime.TryParse(dateTimeInput, CultureInfo.InvariantCulture, DateTimeStyles.None, out scheduledDate))
+        if (!TryParseDateTime(dateInput, timeInput, out var scheduledDate))
         {
-            await FollowupAsync("⚠️ Format de date invalide. Utilisez par exemple `2026-09-18 20:00`.", ephemeral: true);
+            await FollowupAsync("⚠️ Format de date ou d'heure invalide.\n• Exemples de date : `2026-09-18` ou `18/09/2026`\n• Exemples d'heure : `20:00` ou `20h00`", ephemeral: true);
             return;
         }
 
@@ -85,6 +86,47 @@ public class AdminSlashCommands(
         }
     }
 
+    private static bool TryParseDateTime(string dateStr, string timeStr, out DateTime result)
+    {
+        result = default;
+        if (string.IsNullOrWhiteSpace(dateStr) || string.IsNullOrWhiteSpace(timeStr))
+            return false;
+
+        var cleanTime = timeStr.Trim().ToLowerInvariant().Replace('h', ':').Replace('H', ':');
+        if (cleanTime.EndsWith(':')) cleanTime += "00";
+        if (!cleanTime.Contains(':')) cleanTime += ":00";
+
+        var cleanDate = dateStr.Trim();
+        var combined = $"{cleanDate} {cleanTime}";
+
+        string[] formats =
+        [
+            "yyyy-MM-dd HH:mm",
+            "yyyy-MM-dd H:mm",
+            "yyyy/MM/dd HH:mm",
+            "yyyy/MM/dd H:mm",
+            "dd/MM/yyyy HH:mm",
+            "dd/MM/yyyy H:mm",
+            "d/M/yyyy HH:mm",
+            "d/M/yyyy H:mm",
+            "dd-MM-yyyy HH:mm",
+            "dd-MM-yyyy H:mm",
+            "d-M-yyyy HH:mm",
+            "d-M-yyyy H:mm"
+        ];
+
+        if (DateTime.TryParseExact(combined, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
+            return true;
+
+        if (DateTime.TryParse(combined, new CultureInfo("fr-FR"), DateTimeStyles.None, out result))
+            return true;
+
+        if (DateTime.TryParse(combined, CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
+            return true;
+
+        return false;
+    }
+
     [SlashCommand("admin-game-add", "Ajoute un jeu au catalogue de l'association")]
     public async Task AddGameAsync(
         [Summary("nom", "Nom du jeu")] string name,
@@ -108,10 +150,30 @@ public class AdminSlashCommands(
         }
     }
 
+    [SlashCommand("admin-game-remove", "Supprime un jeu du catalogue de l'association")]
+    public async Task RemoveGameAsync([Summary("nom", "Nom exact du jeu à supprimer")] string name)
+    {
+        if (!IsAdmin())
+        {
+            await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            return;
+        }
+
+        try
+        {
+            var game = await removeGameHandler.HandleAsync(name);
+            await RespondAsync($"🗑️ Le jeu **{game.Name}** a été supprimé du catalogue !", ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            await RespondAsync($"⚠️ {ex.Message}", ephemeral: true);
+        }
+    }
+
     [SlashCommand("admin-game-list", "Liste les jeux du catalogue")]
     public async Task ListGamesAsync()
     {
-        var games = await getActiveGamesHandler.HandleAsync();
+        var games = await db.Games.OrderBy(g => g.Name).ToListAsync();
 
         if (games.Count == 0)
         {
@@ -120,12 +182,17 @@ public class AdminSlashCommands(
         }
 
         var list = string.Join("\n", games.Select(g =>
-            $"• **{g.Name}** ({(g.MinPlayers.HasValue ? $"{g.MinPlayers} à {g.MaxPlayers ?? 0} joueurs" : "Sans limite")})"));
+        {
+            var status = g.IsActive ? "🟢" : "⚪ *[Désactivé]*";
+            var players = g.MinPlayers.HasValue ? $"{g.MinPlayers} à {g.MaxPlayers ?? 0} joueurs" : "Sans limite";
+            return $"{status} **{g.Name}** ({players})";
+        }));
 
         var embed = new EmbedBuilder()
             .WithTitle("🎲 Catalogue des Jeux de l'Association")
             .WithColor(Color.Blue)
             .WithDescription(list)
+            .WithFooter("🟢 Actif (disponible dans les sélecteurs) | ⚪ Désactivé")
             .Build();
 
         await RespondAsync(embed: embed, ephemeral: true);
