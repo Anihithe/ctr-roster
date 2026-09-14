@@ -11,6 +11,7 @@ public class GameTableConfiguration : IEntityTypeConfiguration<GameTable>
         builder.ToTable("GameTables");
 
         builder.HasKey(t => t.Id);
+        builder.Property(t => t.Id).ValueGeneratedNever();
 
         builder.Property(t => t.GameName)
             .IsRequired()

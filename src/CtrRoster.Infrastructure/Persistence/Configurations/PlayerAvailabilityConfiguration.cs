@@ -11,6 +11,7 @@ public class PlayerAvailabilityConfiguration : IEntityTypeConfiguration<PlayerAv
         builder.ToTable("PlayerAvailabilities");
 
         builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).ValueGeneratedNever();
 
         builder.Property(a => a.DiscordUserId)
             .IsRequired();
