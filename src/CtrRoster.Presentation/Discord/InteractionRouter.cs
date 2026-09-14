@@ -29,6 +29,18 @@ public class InteractionRouter(
         logger.LogInformation("InteractionRouter initialisé et connecté aux événements Discord.");
     }
 
+    private static Guid ExtractGuid(params string[] tokens)
+    {
+        for (int i = tokens.Length - 1; i >= 0; i--)
+        {
+            if (Guid.TryParse(tokens[i], out var id))
+            {
+                return id;
+            }
+        }
+        return Guid.Empty;
+    }
+
     private async Task HandleButtonAsync(SocketMessageComponent component)
     {
         var tokens = component.Data.CustomId.Split(':');
@@ -56,13 +68,17 @@ public class InteractionRouter(
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur inattendue lors du traitement du bouton {CustomId}", component.Data.CustomId);
-            await component.RespondAsync("❌ Une erreur inattendue est survenue.", ephemeral: true);
+            await component.RespondAsync($"❌ Erreur inattendue : {ex.Message}", ephemeral: true);
         }
     }
 
     private async Task HandleSessionButtonAsync(SocketMessageComponent component, string action, string[] args)
     {
-        var sessionId = args.Length > 0 ? Guid.Parse(args[0]) : Guid.Empty;
+        var sessionId = ExtractGuid(args);
+        if (sessionId == Guid.Empty)
+        {
+            sessionId = ExtractGuid(component.Data.CustomId.Split(':'));
+        }
 
         switch (action)
         {
@@ -95,10 +111,15 @@ public class InteractionRouter(
 
     private async Task HandleTableButtonAsync(SocketMessageComponent component, string action, string[] args)
     {
+        var sessionId = ExtractGuid(args);
+        if (sessionId == Guid.Empty)
+        {
+            sessionId = ExtractGuid(component.Data.CustomId.Split(':'));
+        }
+
         switch (action)
         {
             case "create":
-                var sessionId = args.Length > 0 ? Guid.Parse(args[0]) : Guid.Empty;
                 var tableModal = new ModalBuilder()
                     .WithTitle("Créer une nouvelle table")
                     .WithCustomId($"table:create:submit:{sessionId}")
@@ -130,7 +151,7 @@ public class InteractionRouter(
                     Guid tableToLeaveId;
                     if (target == "current")
                     {
-                        var sId = args.Length > 1 ? Guid.Parse(args[1]) : Guid.Empty;
+                        var sId = sessionId;
                         var currentTable = await db.GameTables
                             .Include(t => t.Participants)
                             .FirstOrDefaultAsync(t => t.GameSessionId == sId && t.Participants.Any(p => p.DiscordUserId == component.User.Id));
@@ -145,7 +166,7 @@ public class InteractionRouter(
                     }
                     else
                     {
-                        tableToLeaveId = Guid.Parse(target);
+                        tableToLeaveId = Guid.TryParse(target, out var parsed) ? parsed : sessionId;
                     }
 
                     var result = await leaveHandler.HandleAsync(tableToLeaveId, component.User.Id);
@@ -194,17 +215,17 @@ public class InteractionRouter(
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors du traitement de la sélection {CustomId}", component.Data.CustomId);
-            await component.RespondAsync("❌ Une erreur inattendue est survenue.", ephemeral: true);
+            await component.RespondAsync($"❌ Erreur inattendue : {ex.Message}", ephemeral: true);
         }
     }
 
     private async Task HandleModalSubmittedAsync(SocketModal modal)
     {
         var tokens = modal.Data.CustomId.Split(':');
-        if (tokens.Length < 3) return;
+        if (tokens.Length < 2) return;
 
         var (module, action) = (tokens[0], tokens[1]);
-        var sessionId = Guid.Parse(tokens[2]);
+        var sessionId = ExtractGuid(tokens);
 
         try
         {
@@ -253,7 +274,7 @@ public class InteractionRouter(
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors du traitement de la modale {CustomId}", modal.Data.CustomId);
-            await modal.RespondAsync("❌ Une erreur inattendue est survenue.", ephemeral: true);
+            await modal.RespondAsync($"❌ Erreur inattendue : {ex.Message}", ephemeral: true);
         }
     }
 }

@@ -162,10 +162,10 @@ public class DiscordMessageRenderer(
         if (session.Status == SessionStatus.Open)
         {
             // Ligne 1 : Boutons d'action principaux
-            componentBuilder.WithButton("Déclarer mes souhaits", $"session:avail:open:{session.Id}", ButtonStyle.Primary, new Emoji("📋"), row: 0);
-            componentBuilder.WithButton("Créer une table", $"table:create:open:{session.Id}", ButtonStyle.Success, new Emoji("⚔️"), row: 0);
+            componentBuilder.WithButton("Déclarer mes souhaits", $"session:avail:{session.Id}", ButtonStyle.Primary, new Emoji("📋"), row: 0);
+            componentBuilder.WithButton("Créer une table", $"table:create:{session.Id}", ButtonStyle.Success, new Emoji("⚔️"), row: 0);
             componentBuilder.WithButton("Quitter ma table", $"table:leave:current:{session.Id}", ButtonStyle.Secondary, new Emoji("🚪"), row: 0);
-            componentBuilder.WithButton("Absent", $"session:absent:toggle:{session.Id}", ButtonStyle.Danger, new Emoji("❌"), row: 0);
+            componentBuilder.WithButton("Absent", $"session:absent:{session.Id}", ButtonStyle.Danger, new Emoji("❌"), row: 0);
 
             // Ligne 2 : Menu déroulant pour rejoindre une table existante (si au moins 1 table existe)
             if (session.Tables.Count > 0)
