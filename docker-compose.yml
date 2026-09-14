@@ -1,0 +1,22 @@
+# Configuration Docker Compose pour le déploiement sur Raspberry Pi (Production)
+version: '3.8'
+
+services:
+  ctr-roster:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ctr_roster_bot
+    restart: unless-stopped
+    environment:
+      - DOTNET_ENVIRONMENT=Production
+      - Discord__Token=${DISCORD_PROD_TOKEN}
+      - Discord__AdminRoleId=${DISCORD_ADMIN_ROLE_ID}
+      - ConnectionStrings__Default=Data Source=/app/data/ctr_roster.db;Cache=Shared
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
