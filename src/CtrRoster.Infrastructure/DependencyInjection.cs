@@ -42,6 +42,12 @@ public static class DependencyInjection
 
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
+        // Services de rendu et throttler Discord
+        services.AddScoped<Discord.DiscordMessageRenderer>();
+        services.AddSingleton<Discord.DiscordUiThrottler>();
+        services.AddSingleton<IDiscordMessageRenderer>(sp => sp.GetRequiredService<Discord.DiscordUiThrottler>());
+        services.AddHostedService(sp => sp.GetRequiredService<Discord.DiscordUiThrottler>());
+
         return services;
     }
 }
