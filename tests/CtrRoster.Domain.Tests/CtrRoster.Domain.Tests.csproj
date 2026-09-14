@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CtrRoster.Domain\CtrRoster.Domain.csproj" />
+    <ProjectReference Include="..\..\src\CtrRoster.Infrastructure\CtrRoster.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\CtrRoster.Application\CtrRoster.Application.csproj" />
   </ItemGroup>
 
 </Project>
