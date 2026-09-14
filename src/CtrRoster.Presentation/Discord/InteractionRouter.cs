@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CtrRoster.Application.Availabilities.Commands;
 using CtrRoster.Application.Common.Interfaces;
 using CtrRoster.Application.Tables.Commands;
@@ -13,8 +14,8 @@ namespace CtrRoster.Presentation.Discord;
 
 /// <summary>
 /// Routeur d'interactions Discord sans état (Stateless).
-/// Intercepte et aiguille les clics sur les boutons, les sélections de menus et les soumissions de modales
-/// à partir des tokens encodés dans les CustomId (format: module:action:param1:param2).
+/// Exploite le catalogue de jeux pour les sélections multiples (SelectMenu) et offre
+/// une option de saisie libre (Modale) pour les jeux hors-catalogue.
 /// </summary>
 public class InteractionRouter(
     DiscordSocketClient client,
@@ -39,6 +40,19 @@ public class InteractionRouter(
             }
         }
         return Guid.Empty;
+    }
+
+    private static List<string> ParseGames(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     private async Task HandleButtonAsync(SocketMessageComponent component)
@@ -83,19 +97,93 @@ public class InteractionRouter(
         switch (action)
         {
             case "avail":
-                // Ouverture de la modale de déclaration de disponibilités
-                var availModal = new ModalBuilder()
-                    .WithTitle("Déclarer mes disponibilités")
-                    .WithCustomId($"session:avail:submit:{sessionId}")
-                    .AddTextInput(
-                        "Jeux souhaités (séparés par des virgules)",
-                        "games",
-                        TextInputStyle.Paragraph,
-                        placeholder: "Ex: Warhammer 40k, Catan, Autre (Dune)",
-                        required: false)
-                    .Build();
+                // Si l'utilisateur a cliqué sur le bouton "custom" de saisie libre
+                if (args.Length > 0 && args[0] == "custom")
+                {
+                    var customModal = new ModalBuilder()
+                        .WithTitle("Proposer un autre jeu")
+                        .WithCustomId($"session:avail:submit:{sessionId}")
+                        .AddTextInput(
+                            "Nom du jeu (ou jeux séparés par virgules)",
+                            "games",
+                            TextInputStyle.Paragraph,
+                            placeholder: "Ex: Nemesis, Blood Bowl, Twilight Imperium...",
+                            required: true)
+                        .Build();
 
-                await component.RespondWithModalAsync(availModal);
+                    await component.RespondWithModalAsync(customModal);
+                    return;
+                }
+
+                // Si l'utilisateur a cliqué sur "clear" pour réinitialiser ses souhaits
+                if (args.Length > 0 && args[0] == "clear")
+                {
+                    using var scopeClear = scopeFactory.CreateScope();
+                    var availHandler = scopeClear.ServiceProvider.GetRequiredService<DeclareAvailabilityHandler>();
+                    await availHandler.HandleAsync(sessionId, component.User.Id, component.User.Username, []);
+                    await component.RespondAsync("🗑️ Tes préférences de jeux ont été réinitialisées.", ephemeral: true);
+                    return;
+                }
+
+                // Clic standard sur "Déclarer mes souhaits" : affichage du catalogue en SelectMenu
+                using (var scope = scopeFactory.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                    var activeGames = await db.Games.Where(g => g.IsActive).OrderBy(g => g.Name).ToListAsync();
+
+                    var existing = await db.PlayerAvailabilities
+                        .FirstOrDefaultAsync(a => a.GameSessionId == sessionId && a.DiscordUserId == component.User.Id);
+
+                    var currentGames = existing != null && !existing.IsAbsent
+                        ? ParseGames(existing.PreferredGamesJson)
+                        : [];
+
+                    var builder = new ComponentBuilder();
+
+                    if (activeGames.Count > 0)
+                    {
+                        var selectMenu = new SelectMenuBuilder()
+                            .WithCustomId($"session:avail:select:{sessionId}")
+                            .WithPlaceholder("Coche un ou plusieurs jeux du club...")
+                            .WithMinValues(1)
+                            .WithMaxValues(Math.Min(activeGames.Count, 25));
+
+                        foreach (var g in activeGames.Take(25))
+                        {
+                            bool isDefault = currentGames.Any(cg => cg.Equals(g.Name, StringComparison.OrdinalIgnoreCase));
+                            selectMenu.AddOption(
+                                g.Name,
+                                g.Name,
+                                g.MinPlayers.HasValue ? $"{g.MinPlayers} à {g.MaxPlayers ?? 0} joueurs" : null,
+                                new Emoji("🎲"),
+                                isDefault: isDefault);
+                        }
+
+                        builder.WithSelectMenu(selectMenu, row: 0);
+                    }
+
+                    // Ligne 2 : Options complémentaires
+                    builder.WithButton(
+                        "➕ Autre jeu (saisie libre)",
+                        $"session:avail:custom:{sessionId}",
+                        ButtonStyle.Secondary,
+                        row: 1);
+
+                    if (currentGames.Count > 0)
+                    {
+                        builder.WithButton(
+                            "🗑️ Effacer mes choix",
+                            $"session:avail:clear:{sessionId}",
+                            ButtonStyle.Danger,
+                            row: 1);
+                    }
+
+                    string prompt = currentGames.Count > 0
+                        ? $"📋 **Tes choix actuels :** *{string.Join(", ", currentGames)}*\nTu peux cocher ci-dessous les jeux du catalogue qui t'intéressent :"
+                        : "📋 **Sélectionne tes préférences de jeu dans le catalogue :**\n*(Tu peux cocher plusieurs jeux d'un coup)*";
+
+                    await component.RespondAsync(prompt, components: builder.Build(), ephemeral: true);
+                }
                 break;
 
             case "absent":
@@ -120,25 +208,70 @@ public class InteractionRouter(
         switch (action)
         {
             case "create":
-                var tableModal = new ModalBuilder()
-                    .WithTitle("Créer une nouvelle table")
-                    .WithCustomId($"table:create:submit:{sessionId}")
-                    .AddTextInput(
-                        "Nom du jeu",
-                        "game_name",
-                        TextInputStyle.Short,
-                        placeholder: "Ex: Warhammer 40k (1v1), 7 Wonders, etc.",
-                        required: true,
-                        maxLength: 100)
-                    .AddTextInput(
-                        "Ajout direct de joueurs (pseudos ou @mentions)",
-                        "additional_players",
-                        TextInputStyle.Short,
-                        placeholder: "Optionnel : séparés par des virgules",
-                        required: false)
-                    .Build();
+                // Si l'utilisateur clique sur le bouton "custom" de création libre
+                if (args.Length > 0 && args[0] == "custom")
+                {
+                    var tableModal = new ModalBuilder()
+                        .WithTitle("Créer une table (Saisie libre)")
+                        .WithCustomId($"table:create:submit:{sessionId}")
+                        .AddTextInput(
+                            "Nom du jeu",
+                            "game_name",
+                            TextInputStyle.Short,
+                            placeholder: "Ex: Warhammer 40k (1v1), Blood Bowl, etc.",
+                            required: true,
+                            maxLength: 100)
+                        .AddTextInput(
+                            "Ajout direct de joueurs (pseudos)",
+                            "additional_players",
+                            TextInputStyle.Short,
+                            placeholder: "Optionnel : séparés par des virgules",
+                            required: false)
+                        .Build();
 
-                await component.RespondWithModalAsync(tableModal);
+                    await component.RespondWithModalAsync(tableModal);
+                    return;
+                }
+
+                // Clic sur "Créer une table" : proposer le catalogue OU saisie libre
+                using (var scope = scopeFactory.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                    var activeGames = await db.Games.Where(g => g.IsActive).OrderBy(g => g.Name).ToListAsync();
+
+                    var builder = new ComponentBuilder();
+
+                    if (activeGames.Count > 0)
+                    {
+                        var selectMenu = new SelectMenuBuilder()
+                            .WithCustomId($"table:create:select:{sessionId}")
+                            .WithPlaceholder("Choisir un jeu du catalogue...")
+                            .WithMinValues(1)
+                            .WithMaxValues(1);
+
+                        foreach (var g in activeGames.Take(25))
+                        {
+                            selectMenu.AddOption(
+                                g.Name,
+                                g.Name,
+                                g.MinPlayers.HasValue ? $"{g.MinPlayers} à {g.MaxPlayers ?? 0} joueurs" : null,
+                                new Emoji("⚔️"));
+                        }
+
+                        builder.WithSelectMenu(selectMenu, row: 0);
+                    }
+
+                    builder.WithButton(
+                        "➕ Autre jeu (saisie libre)",
+                        $"table:create:custom:{sessionId}",
+                        ButtonStyle.Secondary,
+                        row: 1);
+
+                    await component.RespondAsync(
+                        "⚔️ **Création de table** : choisis un jeu du catalogue ci-dessous ou clique sur *Autre jeu* :",
+                        components: builder.Build(),
+                        ephemeral: true);
+                }
                 break;
 
             case "leave":
@@ -182,15 +315,62 @@ public class InteractionRouter(
         if (tokens.Length < 2) return;
 
         var (module, action) = (tokens[0], tokens[1]);
+        var sessionId = ExtractGuid(tokens);
 
         try
         {
+            // 1. Déclaration de préférences via sélection multiple du catalogue
+            if (module == "session" && action == "avail")
+            {
+                var selectedGames = component.Data.Values.ToList();
+
+                using var scope = scopeFactory.CreateScope();
+                var availHandler = scope.ServiceProvider.GetRequiredService<DeclareAvailabilityHandler>();
+                await availHandler.HandleAsync(
+                    sessionId,
+                    component.User.Id,
+                    component.User.Username,
+                    selectedGames);
+
+                await component.UpdateAsync(msg =>
+                {
+                    msg.Content = $"✅ **Disponibilités enregistrées !**\n🎮 Jeux sélectionnés : **{string.Join(", ", selectedGames)}**\n*(La Card de la session a été mise à jour !)*";
+                    msg.Components = null;
+                });
+                return;
+            }
+
+            // 2. Création rapide d'une table à partir d'un jeu du catalogue
+            if (module == "table" && action == "create")
+            {
+                var selectedGame = component.Data.Values.FirstOrDefault();
+                if (string.IsNullOrEmpty(selectedGame)) return;
+
+                using var scope = scopeFactory.CreateScope();
+                var createHandler = scope.ServiceProvider.GetRequiredService<CreateTableHandler>();
+                var result = await createHandler.HandleAsync(
+                    sessionId,
+                    component.User.Id,
+                    component.User.Username,
+                    selectedGame,
+                    gameId: null,
+                    creatorRole: ParticipantRole.Player,
+                    additionalParticipants: []);
+
+                await component.UpdateAsync(msg =>
+                {
+                    msg.Content = $"⚔️ Table pour **{result.Table.GameName}** créée avec succès ! Tu es inscrit comme joueur.";
+                    msg.Components = null;
+                });
+                return;
+            }
+
+            // 3. Rejoindre une table existante (Menu déroulant sous la Card)
             if (module == "table" && action == "join")
             {
                 var selectedValue = component.Data.Values.FirstOrDefault();
                 if (string.IsNullOrEmpty(selectedValue)) return;
 
-                // Format de la valeur : role:tableId (ex: player:Guid ou spectator:Guid)
                 var valueParts = selectedValue.Split(':');
                 if (valueParts.Length < 2) return;
 
@@ -236,18 +416,29 @@ public class InteractionRouter(
                 var gamesText = modal.Data.Components
                     .FirstOrDefault(c => c.CustomId == "games")?.Value ?? string.Empty;
 
-                var gamesList = gamesText
+                var newGames = gamesText
                     .Split(new[] { ',', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .ToList();
 
+                var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                var existing = await db.PlayerAvailabilities
+                    .FirstOrDefaultAsync(a => a.GameSessionId == sessionId && a.DiscordUserId == modal.User.Id);
+
+                var existingGames = existing != null && !existing.IsAbsent
+                    ? ParseGames(existing.PreferredGamesJson)
+                    : [];
+
+                // Fusion des sélections existantes avec les nouveaux ajouts personnalisés
+                var allGames = existingGames.Concat(newGames).Distinct().ToList();
+
                 var availHandler = scope.ServiceProvider.GetRequiredService<DeclareAvailabilityHandler>();
-                var result = await availHandler.HandleAsync(
+                await availHandler.HandleAsync(
                     sessionId,
                     modal.User.Id,
                     modal.User.Username,
-                    gamesList);
+                    allGames);
 
-                await modal.RespondAsync(result, ephemeral: true);
+                await modal.RespondAsync($"✅ **Disponibilités enregistrées !**\n🎮 Jeux : **{string.Join(", ", allGames)}**", ephemeral: true);
             }
             else if (module == "table" && action == "create")
             {
