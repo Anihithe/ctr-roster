@@ -7,7 +7,9 @@
     }
   },
   "ConnectionStrings": {
-    "Default": "Data Source=ctr_roster_dev.db;Cache=Shared"
+    // Mode éphémère en RAM : aucune base de données n'est créée sur le disque de développement.
+    // Les données s'effacent automatiquement dès que le bot s'arrête.
+    "Default": "Data Source=CtrRosterMem;Mode=Memory;Cache=Shared"
   },
   "Discord": {
     "Token": "METTRE_VOTRE_TOKEN_BOT_TEST_ICI",

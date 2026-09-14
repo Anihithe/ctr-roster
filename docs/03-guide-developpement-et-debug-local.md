@@ -9,7 +9,7 @@ Ce guide détaille comment développer, exécuter et déboguer le bot **CTR-Rost
 | Aspect | Développement Local (Votre PC) | Production (Raspberry Pi) |
 | :--- | :--- | :--- |
 | **Exécution** | Directement via `dotnet run` ou bouton **Debug (F5)** dans Rider | Conteneur Docker optimisé Linux ARM64 |
-| **Base de données** | Fichier SQLite local `./ctr_roster_dev.db` (auto-migré au lancement) | Volume Docker `/app/data/association_bot.db` |
+| **Base de données** | **Éphémère en RAM (In-Memory)** `Data Source=CtrRosterMem;Mode=Memory;Cache=Shared` (zéro fichier sur disque) OU conteneur Docker éphémère | Volume Docker persistant `/app/data/ctr_roster.db` |
 | **Propagation Slash Commands** | **Instantanée** (enregistrées uniquement sur le serveur Discord de test) | Globale (enregistrées pour tous les serveurs du bot) |
 | **Rechargement / Débogage** | Points d'arrêt (breakpoints), inspection pas-à-pas, Hot Reload | Logs de conteneur `docker compose logs -f` |
 
@@ -39,11 +39,12 @@ Pour ne jamais risquer de commiter vos tokens Discord ou identifiants sur GitHub
 ### Option A : `dotnet user-secrets` (Recommandé par .NET)
 À la racine du projet `src/CtrRoster.Presentation` :
 ```bash
-/home/anihithe/.dotnet/dotnet user-secrets init
-/home/anihithe/.dotnet/dotnet user-secrets set "Discord:Token" "VOTRE_TOKEN_BOT_DEV"
-/home/anihithe/.dotnet/dotnet user-secrets set "Discord:DevGuildId" "123456789012345678"
-/home/anihithe/.dotnet/dotnet user-secrets set "Discord:AdminRoleId" "123456789012345678"
-/home/anihithe/.dotnet/dotnet user-secrets set "ConnectionStrings:Default" "Data Source=ctr_roster_dev.db;Cache=Shared"
+dotnet user-secrets init
+dotnet user-secrets set "Discord:Token" "VOTRE_TOKEN_BOT_DEV"
+dotnet user-secrets set "Discord:DevGuildId" "123456789012345678"
+dotnet user-secrets set "Discord:AdminRoleId" "123456789012345678"
+# Base 100% éphémère en mémoire (RAM) - Aucun fichier créé sur votre machine :
+dotnet user-secrets set "ConnectionStrings:Default" "Data Source=CtrRosterMem;Mode=Memory;Cache=Shared"
 ```
 
 ### Option B : Fichier `appsettings.Development.json` (ignoré par `.gitignore`)
@@ -58,7 +59,8 @@ Créez `src/CtrRoster.Presentation/appsettings.Development.json` :
     }
   },
   "ConnectionStrings": {
-    "Default": "Data Source=ctr_roster_dev.db;Cache=Shared"
+    // Mode Éphémère en RAM : Disparaît totalement à l'arrêt du bot
+    "Default": "Data Source=CtrRosterMem;Mode=Memory;Cache=Shared"
   },
   "Discord": {
     "Token": "VOTRE_TOKEN_BOT_DEV",
@@ -67,6 +69,13 @@ Créez `src/CtrRoster.Presentation/appsettings.Development.json` :
   }
 }
 ```
+
+### Option C : Exécution éphémère via Docker pour les tests
+Si vous préférez exécuter le bot dans un conteneur temporaire avec un stockage volatile en RAM (`tmpfs`), vous pouvez lancer :
+```bash
+docker compose -f docker-compose.test.yml up --build
+```
+Dès l'arrêt du conteneur, toutes les données résidant en `tmpfs` sont purgées sans laisser aucune trace sur votre disque hôte.
 
 ---
 

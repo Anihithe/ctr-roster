@@ -1,0 +1,18 @@
+# Configuration Docker pour les tests locaux éphémères
+# Les données sont stockées en RAM via tmpfs et détruites dès l'arrêt du conteneur.
+version: '3.8'
+
+services:
+  ctr-roster-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ctr_roster_test
+    environment:
+      - DOTNET_ENVIRONMENT=Development
+      - Discord__Token=${DISCORD_DEV_TOKEN}
+      - Discord__DevGuildId=${DISCORD_DEV_GUILD_ID}
+      - Discord__AdminRoleId=${DISCORD_DEV_ADMIN_ROLE_ID}
+      - ConnectionStrings__Default=Data Source=/app/data/ctr_roster_test.db;Cache=Shared
+    tmpfs:
+      - /app/data:rw,noexec,nosuid,size=64m
