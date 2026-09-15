@@ -31,14 +31,10 @@ public class SetAbsentHandler(IAppDbContext db, IDiscordMessageRenderer renderer
             var participant = table.Participants.FirstOrDefault(p => p.DiscordUserId == userId);
             if (participant != null)
             {
-                int remainingPlayers = table.Participants.Count(p => p.DiscordUserId != userId && p.Role == ParticipantRole.Player);
-                if (remainingPlayers < 2)
+                table.Participants.Remove(participant);
+                if (table.Participants.Count == 0)
                 {
                     db.GameTables.Remove(table);
-                }
-                else
-                {
-                    table.Participants.Remove(participant);
                 }
             }
         }

@@ -109,13 +109,18 @@ public class DiscordMessageRenderer(
             embedBuilder.AddField("📋 DISPONIBILITÉS (Non assignés)", "*Aucun joueur en attente pour le moment.*", inline: false);
         }
 
-        // 2. TABLES FORMÉES
-        if (session.Tables.Count > 0)
+        // 2. TABLES FORMÉES (Tri stable et identique entre l'Embed et le Menu déroulant)
+        var sortedTables = session.Tables
+            .OrderBy(t => t.CreatedAtUtc)
+            .ThenBy(t => t.Id)
+            .ToList();
+
+        if (sortedTables.Count > 0)
         {
             var tableDetails = new List<string>();
             int index = 1;
 
-            foreach (var table in session.Tables.OrderBy(t => t.CreatedAtUtc))
+            foreach (var table in sortedTables)
             {
                 var players = table.Participants.Where(p => p.Role == ParticipantRole.Player).ToList();
                 var spectators = table.Participants.Where(p => p.Role == ParticipantRole.Spectator).ToList();
@@ -168,7 +173,7 @@ public class DiscordMessageRenderer(
             componentBuilder.WithButton("Absent", $"session:absent:{session.Id}", ButtonStyle.Danger, new Emoji("❌"), row: 0);
 
             // Ligne 2 : Menu déroulant pour rejoindre une table existante (si au moins 1 table existe)
-            if (session.Tables.Count > 0)
+            if (sortedTables.Count > 0)
             {
                 var selectMenu = new SelectMenuBuilder()
                     .WithCustomId($"table:join:select:{session.Id}")
@@ -177,18 +182,32 @@ public class DiscordMessageRenderer(
                     .WithMaxValues(1);
 
                 int tableNum = 1;
-                foreach (var table in session.Tables.Take(12)) // Max 25 options autorisées par Discord
+                foreach (var table in sortedTables.Take(12)) // Max 25 options autorisées par Discord (12*2 = 24 options)
                 {
+                    var playerNames = table.Participants
+                        .Where(p => p.Role == ParticipantRole.Player)
+                        .Select(p => p.DiscordUsername)
+                        .ToList();
+
+                    var playersSummary = playerNames.Count > 0
+                        ? $"Joueur(s) : {string.Join(", ", playerNames)}"
+                        : "Aucun joueur pour le moment";
+
+                    if (playersSummary.Length > 95)
+                    {
+                        playersSummary = playersSummary[..92] + "...";
+                    }
+
                     selectMenu.AddOption(
                         $"Rejoindre T{tableNum} : {table.GameName} (Joueur)",
                         $"player:{table.Id}",
-                        $"Jouer sur la table {tableNum}",
+                        playersSummary,
                         new Emoji("🎮"));
 
                     selectMenu.AddOption(
                         $"Observer T{tableNum} : {table.GameName} (Observateur)",
                         $"spectator:{table.Id}",
-                        $"Observer la partie de la table {tableNum}",
+                        $"Observer la table T{tableNum}",
                         new Emoji("👁️"));
 
                     tableNum++;

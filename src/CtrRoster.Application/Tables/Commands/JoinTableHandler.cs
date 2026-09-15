@@ -52,14 +52,10 @@ public class JoinTableHandler(IAppDbContext db, IDiscordMessageRenderer renderer
                 else
                 {
                     // Retrait de l'ancienne table
-                    int remaining = tbl.Participants.Count(part => part.DiscordUserId != userId && part.Role == ParticipantRole.Player);
-                    if (remaining < 2)
+                    tbl.Participants.Remove(p);
+                    if (tbl.Participants.Count == 0)
                     {
                         db.GameTables.Remove(tbl);
-                    }
-                    else
-                    {
-                        tbl.Participants.Remove(p);
                     }
                 }
             }

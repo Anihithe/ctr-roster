@@ -21,25 +21,22 @@ public class LeaveTableHandler(IAppDbContext db, IDiscordMessageRenderer rendere
         var sessionId = table.GameSessionId;
         var gameName = table.GameName;
 
-        // Règle métier critique : Si après le départ il reste moins de 2 joueurs => auto-dissolution de la table
-        int remainingPlayers = table.Participants.Count(p => p.DiscordUserId != userId && p.Role == ParticipantRole.Player);
-        bool dissolved = false;
+        // Retrait du participant
+        table.Participants.Remove(participant);
 
-        if (remainingPlayers < 2)
+        bool dissolved = false;
+        // Règle métier : la table n'est supprimée que si plus personne n'est dessus
+        if (table.Participants.Count == 0)
         {
             db.GameTables.Remove(table);
             dissolved = true;
-        }
-        else
-        {
-            table.Participants.Remove(participant);
         }
 
         await db.SaveChangesAsync(ct);
         await renderer.QueueMessageUpdateAsync(sessionId, ct);
 
         return dissolved
-            ? $"Tu as quitté la table de {gameName}. Il restait moins de 2 joueurs, la table a donc été dissoute."
-            : $"Tu as quitté la table de {gameName}.";
+            ? $"Tu as quitté la table de **{gameName}**. Comme il n'y avait plus personne, la table a été supprimée."
+            : $"Tu as quitté la table de **{gameName}**.";
     }
 }

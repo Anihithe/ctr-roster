@@ -69,44 +69,45 @@ public class TableBusinessLogicTests : IDisposable
     }
 
     [Fact]
-    public async Task LeaveTable_WhenRemainingPlayersLessThanTwo_AutoDissolvesTable()
+    public async Task LeaveTable_WhenOnePlayerLeavesAndCreatorRemains_KeepsTableOpen()
     {
         // Arrange : Table à 2 joueurs (1001 et 1002)
         using var db = new AppDbContext(_options);
         var (session, table) = SeedSessionAndTable(db, playerCount: 2);
         var handler = new LeaveTableHandler(db, _renderer);
 
-        // Act : Le joueur 1002 quitte la table -> il ne reste qu'un seul joueur
+        // Act : Le joueur 1002 quitte la table -> le créateur (1001) reste
         var result = await handler.HandleAsync(table.Id, 1002);
 
-        // Assert : La table doit avoir été automatiquement détruite
-        using var verifyDb = new AppDbContext(_options);
-        var remainingTable = await verifyDb.GameTables.FirstOrDefaultAsync(t => t.Id == table.Id);
-        Assert.Null(remainingTable);
-        Assert.Contains("dissoute", result);
-        Assert.Contains(session.Id, _renderer.QueuedSessionIds);
-    }
-
-    [Fact]
-    public async Task LeaveTable_WhenThreePlayersExist_KeepsTableOpen()
-    {
-        // Arrange : Table à 3 joueurs (1001, 1002, 1003)
-        using var db = new AppDbContext(_options);
-        var (session, table) = SeedSessionAndTable(db, playerCount: 3);
-        var handler = new LeaveTableHandler(db, _renderer);
-
-        // Act : Le joueur 1003 quitte -> il reste 2 joueurs
-        var result = await handler.HandleAsync(table.Id, 1003);
-
-        // Assert : La table reste active
+        // Assert : La table DOIT rester active pour le joueur 1001
         using var verifyDb = new AppDbContext(_options);
         var remainingTable = await verifyDb.GameTables
             .Include(t => t.Participants)
             .FirstOrDefaultAsync(t => t.Id == table.Id);
 
         Assert.NotNull(remainingTable);
-        Assert.Equal(2, remainingTable.Participants.Count);
-        Assert.DoesNotContain("dissoute", result);
+        Assert.Single(remainingTable.Participants);
+        Assert.Equal((ulong)1001, remainingTable.Participants[0].DiscordUserId);
+        Assert.DoesNotContain("supprimée", result);
+        Assert.Contains(session.Id, _renderer.QueuedSessionIds);
+    }
+
+    [Fact]
+    public async Task LeaveTable_WhenLastParticipantLeaves_DissolvesTable()
+    {
+        // Arrange : Table à 1 seul joueur (1001)
+        using var db = new AppDbContext(_options);
+        var (session, table) = SeedSessionAndTable(db, playerCount: 1);
+        var handler = new LeaveTableHandler(db, _renderer);
+
+        // Act : Le dernier joueur 1001 quitte la table
+        var result = await handler.HandleAsync(table.Id, 1001);
+
+        // Assert : Comme il n'y a plus personne, la table est supprimée
+        using var verifyDb = new AppDbContext(_options);
+        var remainingTable = await verifyDb.GameTables.FirstOrDefaultAsync(t => t.Id == table.Id);
+        Assert.Null(remainingTable);
+        Assert.Contains("supprimée", result);
     }
 
     [Fact]
@@ -183,7 +184,7 @@ public class TableBusinessLogicTests : IDisposable
     [Fact]
     public async Task SetAbsent_RemovesPlayerFromActiveTableAndMarksAbsent()
     {
-        // Arrange
+        // Arrange : Table à 2 joueurs (1001 et 1002)
         using var db = new AppDbContext(_options);
         var (session, table) = SeedSessionAndTable(db, playerCount: 2);
         var handler = new SetAbsentHandler(db, _renderer);
@@ -191,15 +192,37 @@ public class TableBusinessLogicTests : IDisposable
         // Act : Le joueur 1002 se déclare absent
         await handler.HandleAsync(session.Id, 1002, "Player2");
 
-        // Assert : La table avait 2 joueurs, en retirant 1002 il reste 1 joueur => auto-dissoute
+        // Assert : La table avait 2 joueurs, en retirant 1002 il reste le joueur 1001 => table préservée !
         using var verifyDb = new AppDbContext(_options);
-        var checkTable = await verifyDb.GameTables.FirstOrDefaultAsync(t => t.Id == table.Id);
-        Assert.Null(checkTable);
+        var checkTable = await verifyDb.GameTables
+            .Include(t => t.Participants)
+            .FirstOrDefaultAsync(t => t.Id == table.Id);
+
+        Assert.NotNull(checkTable);
+        Assert.Single(checkTable.Participants);
+        Assert.Equal((ulong)1001, checkTable.Participants[0].DiscordUserId);
 
         var availability = await verifyDb.PlayerAvailabilities
             .FirstOrDefaultAsync(a => a.GameSessionId == session.Id && a.DiscordUserId == 1002);
         Assert.NotNull(availability);
         Assert.True(availability.IsAbsent);
+    }
+
+    [Fact]
+    public async Task SetAbsent_WhenLastPlayerLeaves_RemovesTable()
+    {
+        // Arrange : Table à 1 seul joueur (1001)
+        using var db = new AppDbContext(_options);
+        var (session, table) = SeedSessionAndTable(db, playerCount: 1);
+        var handler = new SetAbsentHandler(db, _renderer);
+
+        // Act : Le seul joueur 1001 se déclare absent
+        await handler.HandleAsync(session.Id, 1001, "Player1");
+
+        // Assert : Comme il n'y a plus personne, la table est supprimée
+        using var verifyDb = new AppDbContext(_options);
+        var checkTable = await verifyDb.GameTables.FirstOrDefaultAsync(t => t.Id == table.Id);
+        Assert.Null(checkTable);
     }
 
     [Fact]

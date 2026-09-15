@@ -65,7 +65,7 @@ Ces règles doivent être strictement validées dans la couche Domaine / Applica
 | Règle | Description & Comportement |
 | :--- | :--- |
 | **Exclusivité joueur** | Un utilisateur Discord ne peut appartenir qu'à **une seule table active** par session (que ce soit comme joueur ou observateur). |
-| **Seuil critique de table** | Une table requiert un minimum de **2 joueurs**. Si un désistement fait descendre l'effectif des joueurs à **1**, la table est **automatiquement dissoute** et les membres restants sont reversés dans le statut disponible. |
+| **Persistance & Dissolution de table** | Une table créée reste **active tant qu'il reste au moins un participant** dessus (le créateur ou joueur restant reste en attente de nouveaux adversaires). La table n'est **automatiquement supprimée que lorsqu'elle devient totalement vide** (0 participant restant). |
 | **Gouvernance de table** | Seul le **créateur initial de la table** ou un **Admin** peut dissoudre manuellement une table. Un membre ordinaire peut uniquement se retirer lui-même. |
 | **Consentement d'assignation directe** | Lorsqu'un joueur assigne directement un autre membre à sa table, le bot envoie une notification mentionnant l'utilisateur assigné avec un bouton d'action immédiate pour refuser/quitter (`table:leave:{tableId}`). |
 | **Statut Observateur** | L'observateur est physiquement rattaché à une table pour la soirée. Il compte dans l'exclusivité (ne peut observer ou jouer sur une autre table simultanément). |
