@@ -51,22 +51,38 @@ public class BotStartupService(
                 var devGuildId = config.GetValue<ulong>("Discord:DevGuildId");
                 if (env.IsDevelopment())
                 {
-                    if (devGuildId != 0)
+                    var registeredGuilds = new HashSet<ulong>();
+
+                    // Enregistrement instantané automatique sur TOUS les serveurs où le bot est présent (Dev, PPD, etc.)
+                    foreach (var guild in client.Guilds)
                     {
-                        // Enregistrement instantané (0 seconde) sur le serveur de test spécifié
-                        await interactionService.RegisterCommandsToGuildAsync(devGuildId);
-                        logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur de test Dev {GuildId}", devGuildId);
-                    }
-                    else if (client.Guilds.Count > 0)
-                    {
-                        // Enregistrement instantané automatique sur tous les serveurs où le bot est présent
-                        foreach (var guild in client.Guilds)
+                        try
                         {
                             await interactionService.RegisterCommandsToGuildAsync(guild.Id);
+                            registeredGuilds.Add(guild.Id);
                             logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur {GuildName} ({GuildId})", guild.Name, guild.Id);
                         }
+                        catch (Exception ex)
+                        {
+                            logger.LogError(ex, "Erreur lors de l'enregistrement des commandes sur le serveur {GuildName} ({GuildId})", guild.Name, guild.Id);
+                        }
                     }
-                    else
+
+                    // Si un DevGuildId est spécifié et n'était pas dans la boucle
+                    if (devGuildId != 0 && !registeredGuilds.Contains(devGuildId))
+                    {
+                        try
+                        {
+                            await interactionService.RegisterCommandsToGuildAsync(devGuildId);
+                            logger.LogInformation("⚡ Slash commands enregistrées instantanément sur le serveur de test Dev {GuildId}", devGuildId);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogError(ex, "Erreur lors de l'enregistrement des commandes sur DevGuildId {GuildId}", devGuildId);
+                        }
+                    }
+
+                    if (registeredGuilds.Count == 0 && devGuildId == 0)
                     {
                         logger.LogWarning("⚠️ Le bot n'a détecté aucun serveur Discord. Pensez à l'inviter sur votre serveur avec les permissions bot et applications.commands !");
                     }

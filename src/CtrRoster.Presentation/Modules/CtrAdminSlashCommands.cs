@@ -28,13 +28,59 @@ public class CtrAdminSlashCommands(
     private async Task<bool> IsAdminAsync()
     {
         if (Context.User is not SocketGuildUser guildUser) return false;
-        if (guildUser.GuildPermissions.Administrator) return true;
 
+        // 1. Super-Admins / Développeurs autorisés directement par leur User ID Discord (partout)
+        var adminUserIds = GetConfiguredIds("Discord:AdminUserIds", "Discord:AdminUserId");
+        if (adminUserIds.Contains(guildUser.Id)) return true;
+
+        // 2. Administrateurs Discord ou gestionnaires d'événements du serveur
+        if (guildUser.GuildPermissions.Administrator || guildUser.GuildPermissions.ManageGuild || guildUser.GuildPermissions.ManageEvents)
+        {
+            return true;
+        }
+
+        // 3. Rôle configuré dynamiquement en base de données pour ce serveur
         var guildId = Context.Guild.Id;
         var guildConfig = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == guildId);
-        var adminRoleId = guildConfig?.AdminRoleId ?? config.GetValue<ulong>("Discord:AdminRoleId");
+        if (guildConfig?.AdminRoleId.HasValue == true && guildConfig.AdminRoleId.Value != 0 &&
+            guildUser.Roles.Any(r => r.Id == guildConfig.AdminRoleId.Value))
+        {
+            return true;
+        }
 
-        return adminRoleId != 0 && guildUser.Roles.Any(r => r.Id == adminRoleId);
+        // 4. Rôles globaux configurés via appsettings ou user-secrets (ex: rôles de test / staff)
+        var globalAdminRoleIds = GetConfiguredIds("Discord:AdminRoleIds", "Discord:AdminRoleId");
+        if (guildUser.Roles.Any(r => globalAdminRoleIds.Contains(r.Id)))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private List<ulong> GetConfiguredIds(string arrayKey, string singleKey)
+    {
+        var result = new List<ulong>();
+
+        var section = config.GetSection(arrayKey);
+        var children = section.GetChildren().Select(c => c.Value).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+        foreach (var val in children)
+        {
+            if (ulong.TryParse(val, out var id) && id != 0) result.Add(id);
+        }
+
+        if (!string.IsNullOrWhiteSpace(section.Value))
+        {
+            foreach (var part in section.Value.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (ulong.TryParse(part, out var id) && id != 0 && !result.Contains(id)) result.Add(id);
+            }
+        }
+
+        var single = config.GetValue<ulong>(singleKey);
+        if (single != 0 && !result.Contains(single)) result.Add(single);
+
+        return result;
     }
 
     [SlashCommand("ctr-config", "Affiche ou configure les paramètres du bot pour ce serveur")]
