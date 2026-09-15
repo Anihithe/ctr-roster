@@ -138,6 +138,25 @@ public class InteractionRouter(
                         ? ParseGames(existing.PreferredGamesJson)
                         : [];
 
+                    // Si aucun jeu n'est dans le catalogue, ouvrir directement la modale de saisie libre
+                    if (activeGames.Count == 0)
+                    {
+                        var customModal = new ModalBuilder()
+                            .WithTitle("Indiquer mes souhaits de jeux")
+                            .WithCustomId($"session:avail:submit:{sessionId}")
+                            .AddTextInput(
+                                "Nom du jeu (ou jeux séparés par virgules)",
+                                "games",
+                                TextInputStyle.Paragraph,
+                                placeholder: "Ex: Nemesis, Blood Bowl, Twilight Imperium...",
+                                required: true,
+                                value: currentGames.Count > 0 ? string.Join(", ", currentGames) : null)
+                            .Build();
+
+                        await component.RespondWithModalAsync(customModal);
+                        return;
+                    }
+
                     var builder = new ComponentBuilder();
 
                     if (activeGames.Count > 0)
@@ -238,6 +257,31 @@ public class InteractionRouter(
                 {
                     var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                     var activeGames = await db.Games.Where(g => g.IsActive).OrderBy(g => g.Name).ToListAsync();
+
+                    // Si aucun jeu n'est dans le catalogue, ouvrir directement la modale de saisie libre
+                    if (activeGames.Count == 0)
+                    {
+                        var tableModal = new ModalBuilder()
+                            .WithTitle("Créer une table (Saisie libre)")
+                            .WithCustomId($"table:create:submit:{sessionId}")
+                            .AddTextInput(
+                                "Nom du jeu",
+                                "game_name",
+                                TextInputStyle.Short,
+                                placeholder: "Ex: Warhammer 40k (1v1), Blood Bowl, etc.",
+                                required: true,
+                                maxLength: 100)
+                            .AddTextInput(
+                                "Ajout direct de joueurs (pseudos)",
+                                "additional_players",
+                                TextInputStyle.Short,
+                                placeholder: "Optionnel : séparés par des virgules",
+                                required: false)
+                            .Build();
+
+                        await component.RespondWithModalAsync(tableModal);
+                        return;
+                    }
 
                     var builder = new ComponentBuilder();
 
