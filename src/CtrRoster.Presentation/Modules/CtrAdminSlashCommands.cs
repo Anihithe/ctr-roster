@@ -19,7 +19,6 @@ public class CtrAdminSlashCommands(
     AddGameHandler addGameHandler,
     RemoveGameHandler removeGameHandler,
     ToggleGameActiveHandler toggleGameActiveHandler,
-    GetActiveGamesHandler getActiveGamesHandler,
     DiscordMessageRenderer renderer,
     IAppDbContext db,
     IConfiguration config,

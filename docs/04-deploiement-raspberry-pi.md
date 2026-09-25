@@ -17,9 +17,9 @@ newgrp docker
 
 ---
 
-## 2. Dockerfile Multi-Stage (.NET 10 pour ARM64)
+## 2. Dockerfile Multi-Stage (.NET 10 Multi-Architecture ARM32/ARM64)
 
-Ce Dockerfile est placé à la racine du dépôt (`./Dockerfile`). Il compile l'application pour `linux-arm64` et produit une image finale minimale.
+Ce Dockerfile est placé à la racine du dépôt (`./Dockerfile`). Il compile l'application pour l'architecture native du Raspberry Pi (`armv7l` ou `arm64`) et produit une image d'exécution minimale.
 
 ```dockerfile
 # Étape 1 : Compilation
@@ -32,11 +32,11 @@ COPY src/CtrRoster.Application/*.csproj src/CtrRoster.Application/
 COPY src/CtrRoster.Infrastructure/*.csproj src/CtrRoster.Infrastructure/
 COPY src/CtrRoster.Presentation/*.csproj src/CtrRoster.Presentation/
 
-RUN dotnet restore -r linux-arm64
+RUN dotnet restore
 
 COPY . .
 WORKDIR /source/src/CtrRoster.Presentation
-RUN dotnet publish -c Release -o /app --no-restore -r linux-arm64 --self-contained false
+RUN dotnet publish -c Release -o /app --no-restore
 
 # Étape 2 : Image d'exécution finale
 FROM mcr.microsoft.com/dotnet/runtime:10.0 AS final
