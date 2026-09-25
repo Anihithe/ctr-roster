@@ -9,9 +9,10 @@ services:
     container_name: ctr_roster_bot
     restart: unless-stopped
     environment:
-      - DOTNET_ENVIRONMENT=Production
+      - DOTNET_ENVIRONMENT=${DOTNET_ENVIRONMENT:-Production}
       - Discord__Token=${DISCORD_PROD_TOKEN}
-      - Discord__AdminRoleId=${DISCORD_ADMIN_ROLE_ID}
+      - Discord__AdminRoleId=${DISCORD_ADMIN_ROLE_ID:-0}
+      - Discord__AdminUserId=${DISCORD_ADMIN_USER_ID:-0}
       - ConnectionStrings__Default=Data Source=/app/data/ctr_roster.db;Cache=Shared
     volumes:
       - ./data:/app/data
