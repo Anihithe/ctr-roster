@@ -11,6 +11,8 @@ public class UserSlashCommands(IAppDbContext db) : InteractionModuleBase<SocketI
     [SlashCommand("ctr-info", "Affiche les informations sur la session en cours")]
     public async Task RosterInfoAsync()
     {
+        await DeferAsync(ephemeral: true);
+
         var channelId = Context.Channel.Id;
         var session = await db.GameSessions
             .Include(s => s.Tables)
@@ -19,7 +21,7 @@ public class UserSlashCommands(IAppDbContext db) : InteractionModuleBase<SocketI
 
         if (session == null)
         {
-            await RespondAsync("ℹ️ Aucune session active n'est ouverte sur ce salon.", ephemeral: true);
+            await FollowupAsync("ℹ️ Aucune session active n'est ouverte sur ce salon.", ephemeral: true);
             return;
         }
 
@@ -32,6 +34,6 @@ public class UserSlashCommands(IAppDbContext db) : InteractionModuleBase<SocketI
             .AddField("Disponibilités", $"{session.Availabilities.Count(a => !a.IsAbsent)} joueur(s) en attente", inline: true)
             .Build();
 
-        await RespondAsync(embed: embed, ephemeral: true);
+        await FollowupAsync(embed: embed, ephemeral: true);
     }
 }

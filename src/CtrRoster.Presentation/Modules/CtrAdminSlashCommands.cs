@@ -88,9 +88,11 @@ public class CtrAdminSlashCommands(
         [Summary("role_admin", "Rôle administrateur pour gérer le bot")] IRole? adminRole = null,
         [Summary("auto_renouvellement", "Activer ou désactiver l'ouverture auto de la session suivante (+7 jours)")] bool? autoRenew = null)
     {
+        await DeferAsync(ephemeral: true);
+
         if (!await IsAdminAsync())
         {
-            await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            await FollowupAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
             return;
         }
 
@@ -149,7 +151,7 @@ public class CtrAdminSlashCommands(
             .WithFooter("Pour modifier : /ctr-config salon:#nom-du-salon role_admin:@NomRole auto_renouvellement:true/false")
             .Build();
 
-        await RespondAsync(embed: embed, ephemeral: true);
+        await FollowupAsync(embed: embed, ephemeral: true);
     }
 
     [SlashCommand("ctr-session-create", "Crée et publie une nouvelle session de jeu")]
@@ -253,51 +255,57 @@ public class CtrAdminSlashCommands(
         [Summary("min_joueurs", "Nombre minimum de joueurs")] int? minPlayers = null,
         [Summary("max_joueurs", "Nombre maximum de joueurs")] int? maxPlayers = null)
     {
+        await DeferAsync(ephemeral: true);
+
         if (!await IsAdminAsync())
         {
-            await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            await FollowupAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
             return;
         }
 
         try
         {
             var game = await addGameHandler.HandleAsync(name, minPlayers, maxPlayers);
-            await RespondAsync($"✅ Le jeu **{game.Name}** a été ajouté au catalogue !", ephemeral: true);
+            await FollowupAsync($"✅ Le jeu **{game.Name}** a été ajouté au catalogue !", ephemeral: true);
         }
         catch (Exception ex)
         {
-            await RespondAsync($"⚠️ {ex.Message}", ephemeral: true);
+            await FollowupAsync($"⚠️ {ex.Message}", ephemeral: true);
         }
     }
 
     [SlashCommand("ctr-game-remove", "Supprime un jeu du catalogue de l'association")]
     public async Task RemoveGameAsync([Summary("nom", "Nom exact du jeu à supprimer")] string name)
     {
+        await DeferAsync(ephemeral: true);
+
         if (!await IsAdminAsync())
         {
-            await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            await FollowupAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
             return;
         }
 
         try
         {
             var game = await removeGameHandler.HandleAsync(name);
-            await RespondAsync($"🗑️ Le jeu **{game.Name}** a été supprimé du catalogue !", ephemeral: true);
+            await FollowupAsync($"🗑️ Le jeu **{game.Name}** a été supprimé du catalogue !", ephemeral: true);
         }
         catch (Exception ex)
         {
-            await RespondAsync($"⚠️ {ex.Message}", ephemeral: true);
+            await FollowupAsync($"⚠️ {ex.Message}", ephemeral: true);
         }
     }
 
     [SlashCommand("ctr-game-list", "Liste les jeux du catalogue")]
     public async Task ListGamesAsync()
     {
+        await DeferAsync(ephemeral: true);
+
         var games = await db.Games.OrderBy(g => g.Name).ToListAsync();
 
         if (games.Count == 0)
         {
-            await RespondAsync("ℹ️ Aucun jeu n'est actuellement configuré dans le catalogue.", ephemeral: true);
+            await FollowupAsync("ℹ️ Aucun jeu n'est actuellement configuré dans le catalogue.", ephemeral: true);
             return;
         }
 
@@ -315,27 +323,29 @@ public class CtrAdminSlashCommands(
             .WithFooter("🟢 Actif (disponible dans les sélecteurs) | ⚪ Désactivé")
             .Build();
 
-        await RespondAsync(embed: embed, ephemeral: true);
+        await FollowupAsync(embed: embed, ephemeral: true);
     }
 
     [SlashCommand("ctr-game-toggle", "Active ou désactive un jeu du catalogue")]
     public async Task ToggleGameAsync([Summary("nom_jeu", "Nom exact du jeu à activer/désactiver")] string gameName)
     {
+        await DeferAsync(ephemeral: true);
+
         if (!await IsAdminAsync())
         {
-            await RespondAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            await FollowupAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
             return;
         }
 
         var game = await db.Games.FirstOrDefaultAsync(g => g.Name.ToLower() == gameName.ToLower());
         if (game == null)
         {
-            await RespondAsync($"⚠️ Le jeu '{gameName}' est introuvable dans le catalogue.", ephemeral: true);
+            await FollowupAsync($"⚠️ Le jeu '{gameName}' est introuvable dans le catalogue.", ephemeral: true);
             return;
         }
 
         var newState = await toggleGameActiveHandler.HandleAsync(game.Id);
         string stateStr = newState ? "activé" : "désactivé";
-        await RespondAsync($"✅ Le jeu **{game.Name}** a été {stateStr} du catalogue.", ephemeral: true);
+        await FollowupAsync($"✅ Le jeu **{game.Name}** a été {stateStr} du catalogue.", ephemeral: true);
     }
 }
