@@ -2,13 +2,12 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
 
-COPY *.sln .
 COPY src/CtrRoster.Domain/*.csproj src/CtrRoster.Domain/
 COPY src/CtrRoster.Application/*.csproj src/CtrRoster.Application/
 COPY src/CtrRoster.Infrastructure/*.csproj src/CtrRoster.Infrastructure/
 COPY src/CtrRoster.Presentation/*.csproj src/CtrRoster.Presentation/
 
-RUN dotnet restore
+RUN dotnet restore src/CtrRoster.Presentation/CtrRoster.Presentation.csproj
 
 COPY . .
 WORKDIR /source/src/CtrRoster.Presentation
