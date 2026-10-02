@@ -29,3 +29,13 @@ data/
 *.log
 .DS_Store
 Thumbs.db
+
+# AI Tools & Instructions (non-tracked)
+.cursorrules
+.cursor/
+.ai/
+.gemini/
+.claude/
+.copilot/
+*.aiconfig
+*.prompt
