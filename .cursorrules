@@ -21,3 +21,14 @@
 - Préférer le pattern matching moderne et les expressions switch.
 - Méthodes asynchrones : toujours propager le `CancellationToken`.
 - Pas de logique métier dans les handlers de commandes Discord : déléguer systématiquement à la couche Application.
+
+# Workflow Git & Collaboration IA
+1. **Protection de la branche main** : Ne JAMAIS coder ou modifier de fichiers directement sur la branche `main`.
+2. **Branches de Feature / Fix** :
+   - Avant toute modification de code, vérifier la branche active (`git branch --show-current`).
+   - Si la branche est `main`, basculer impérativement sur une branche dédiée : `git checkout -b feature/<nom>` (nouvelle fonctionnalité) ou `git checkout -b fix/<nom>` (correction de bug).
+3. **Validation & Qualité** :
+   - Toujours exécuter `dotnet test` avant de valider un travail ou un commit.
+   - Respecter la convention **Conventional Commits** (`feat:`, `fix:`, `refactor:`, `test:`, `chore:`).
+4. **Releases & Déploiements** :
+   - Les nouvelles versions sont préparées sur une branche `release/vX.Y.Z` avant fusion dans `main` et création d'un tag Git `vX.Y.Z`.
