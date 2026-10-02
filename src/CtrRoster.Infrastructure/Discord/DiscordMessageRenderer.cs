@@ -80,12 +80,30 @@ public class DiscordMessageRenderer(
             })
             .WithFooter($"Session ID: {session.Id} • Mis à jour à {DateTime.UtcNow:HH:mm:ss} UTC");
 
+        var sortedTables = session.Tables
+            .OrderBy(t => t.CreatedAtUtc)
+            .ThenBy(t => t.Id)
+            .ToList();
+
         string statusText = session.Status switch
         {
             SessionStatus.Open => "🟢 **Inscriptions ouvertes**",
             SessionStatus.Locked => "🔒 **Inscriptions verrouillées**",
             _ => "🔴 **Session clôturée**"
         };
+
+        if (session.MaxTables.HasValue)
+        {
+            if (sortedTables.Count >= session.MaxTables.Value)
+            {
+                statusText += $" • 🔴 **Capacité atteinte ({sortedTables.Count}/{session.MaxTables.Value} tables)**";
+            }
+            else
+            {
+                statusText += $" • 🪑 **Capacité : {sortedTables.Count}/{session.MaxTables.Value} tables**";
+            }
+        }
+
         embedBuilder.WithDescription(statusText);
 
         // 1. DISPONIBILITÉS (Non assignés)
@@ -116,10 +134,9 @@ public class DiscordMessageRenderer(
         }
 
         // 2. TABLES FORMÉES (Tri stable et identique entre l'Embed et le Menu déroulant)
-        var sortedTables = session.Tables
-            .OrderBy(t => t.CreatedAtUtc)
-            .ThenBy(t => t.Id)
-            .ToList();
+        string baseTablesFieldName = session.MaxTables.HasValue
+            ? $"⚔️ TABLES FORMÉES ({sortedTables.Count}/{session.MaxTables.Value})"
+            : (sortedTables.Count > 0 ? $"⚔️ TABLES FORMÉES ({sortedTables.Count})" : "⚔️ TABLES FORMÉES");
 
         if (sortedTables.Count > 0)
         {
@@ -158,7 +175,7 @@ public class DiscordMessageRenderer(
                 var item = tableDetails[i];
                 if (currentLength + item.Length + 2 > 1000 && currentFieldContent.Count > 0)
                 {
-                    string fieldName = partIndex == 1 ? "⚔️ TABLES FORMÉES" : $"⚔️ TABLES FORMÉES (suite {partIndex})";
+                    string fieldName = partIndex == 1 ? baseTablesFieldName : $"{baseTablesFieldName} (suite {partIndex})";
                     embedBuilder.AddField(fieldName, string.Join("\n\n", currentFieldContent), inline: false);
                     currentFieldContent.Clear();
                     currentLength = 0;
@@ -171,13 +188,16 @@ public class DiscordMessageRenderer(
 
             if (currentFieldContent.Count > 0)
             {
-                string fieldName = partIndex == 1 ? "⚔️ TABLES FORMÉES" : $"⚔️ TABLES FORMÉES (suite {partIndex})";
+                string fieldName = partIndex == 1 ? baseTablesFieldName : $"{baseTablesFieldName} (suite {partIndex})";
                 embedBuilder.AddField(fieldName, string.Join("\n\n", currentFieldContent), inline: false);
             }
         }
         else
         {
-            embedBuilder.AddField("⚔️ TABLES FORMÉES", "*Aucune table constituée pour le moment.*", inline: false);
+            string emptyMsg = session.MaxTables.HasValue
+                ? $"*Aucune table constituée pour le moment (capacité : {session.MaxTables.Value} tables max).*"
+                : "*Aucune table constituée pour le moment.*";
+            embedBuilder.AddField(baseTablesFieldName, emptyMsg, inline: false);
         }
 
         // 3. ABSENTS
@@ -197,9 +217,20 @@ public class DiscordMessageRenderer(
 
         if (session.Status == SessionStatus.Open)
         {
+            bool isFull = session.MaxTables.HasValue && sortedTables.Count >= session.MaxTables.Value;
+
             // Ligne 1 : Boutons d'action principaux
             componentBuilder.WithButton("Déclarer mes souhaits", $"session:avail:{session.Id}", ButtonStyle.Primary, new Emoji("📋"), row: 0);
-            componentBuilder.WithButton("Créer une table", $"table:create:{session.Id}", ButtonStyle.Success, new Emoji("⚔️"), row: 0);
+
+            if (isFull)
+            {
+                componentBuilder.WithButton("Créer une table (Complet)", $"table:create:{session.Id}", ButtonStyle.Secondary, new Emoji("🛑"), row: 0, disabled: true);
+            }
+            else
+            {
+                componentBuilder.WithButton("Créer une table", $"table:create:{session.Id}", ButtonStyle.Success, new Emoji("⚔️"), row: 0);
+            }
+
             componentBuilder.WithButton("Quitter ma table", $"table:leave:current:{session.Id}", ButtonStyle.Secondary, new Emoji("🚪"), row: 0);
             componentBuilder.WithButton("Absent", $"session:absent:{session.Id}", ButtonStyle.Danger, new Emoji("❌"), row: 0);
 

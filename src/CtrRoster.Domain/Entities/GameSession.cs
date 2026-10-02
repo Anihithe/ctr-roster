@@ -40,6 +40,11 @@ public class GameSession
     public SessionStatus Status { get; set; } = SessionStatus.Open;
 
     /// <summary>
+    /// Nombre maximum de tables autorisées pour cette session (null = sans limite).
+    /// </summary>
+    public int? MaxTables { get; set; }
+
+    /// <summary>
     /// Liste des déclarations de disponibilité des joueurs pour cette session.
     /// </summary>
     public List<PlayerAvailability> Availabilities { get; set; } = [];

@@ -65,10 +65,17 @@ public class CreateTableHandler(IAppDbContext db, IDiscordMessageRenderer render
                     int remaining = tbl.Participants.Count(p => p.Role == ParticipantRole.Player);
                     if (remaining < 2)
                     {
+                        session.Tables.Remove(tbl);
                         db.GameTables.Remove(tbl);
                     }
                 }
             }
+        }
+
+        // Vérification de la capacité maximale de tables pour cette session
+        if (session.MaxTables.HasValue && session.Tables.Count >= session.MaxTables.Value)
+        {
+            throw new DomainException($"La capacité maximale de cette session est atteinte ({session.MaxTables.Value} table{(session.MaxTables.Value > 1 ? "s" : "")} max).");
         }
 
         var newTable = new GameTable

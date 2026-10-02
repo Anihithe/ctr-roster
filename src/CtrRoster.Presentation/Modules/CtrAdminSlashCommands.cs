@@ -4,6 +4,7 @@ using CtrRoster.Application.Games.Commands;
 using CtrRoster.Application.Games.Queries;
 using CtrRoster.Application.Sessions.Commands;
 using CtrRoster.Domain.Entities;
+using CtrRoster.Domain.Enums;
 using CtrRoster.Infrastructure.Discord;
 using Discord;
 using Discord.Interactions;
@@ -16,6 +17,7 @@ namespace CtrRoster.Presentation.Modules;
 
 public class CtrAdminSlashCommands(
     CreateSessionHandler createSessionHandler,
+    SetSessionCapacityHandler setSessionCapacityHandler,
     AddGameHandler addGameHandler,
     RemoveGameHandler removeGameHandler,
     ToggleGameActiveHandler toggleGameActiveHandler,
@@ -94,7 +96,9 @@ public class CtrAdminSlashCommands(
         [Summary("salon_restreint", "Restreindre l'utilisation du bot à ce salon uniquement")] ITextChannel? allowedChannel = null,
         [Summary("role_admin", "Rôle administrateur pour gérer le bot")] IRole? adminRole = null,
         [Summary("auto_renouvellement", "Activer ou désactiver l'ouverture auto de la session suivante (+7 jours)")] bool? autoRenew = null,
-        [Summary("reset_restriction_salon", "Supprimer la restriction de salon")] bool resetAllowedChannel = false)
+        [Summary("reset_restriction_salon", "Supprimer la restriction de salon")] bool resetAllowedChannel = false,
+        [Summary("max_tables_defaut", "Nombre maximum de tables par défaut pour les sessions (vide = illimité)")] int? defaultMaxTables = null,
+        [Summary("reset_max_tables", "Supprimer la limite de tables par défaut")] bool resetDefaultMaxTables = false)
     {
         await DeferAsync(ephemeral: true);
 
@@ -143,6 +147,22 @@ public class CtrAdminSlashCommands(
             hasChanges = true;
         }
 
+        if (defaultMaxTables.HasValue)
+        {
+            if (defaultMaxTables.Value < 1)
+            {
+                await FollowupAsync("⚠️ La limite par défaut de tables doit être au minimum de 1.", ephemeral: true);
+                return;
+            }
+            guildConfig.DefaultMaxTables = defaultMaxTables.Value;
+            hasChanges = true;
+        }
+        else if (resetDefaultMaxTables)
+        {
+            guildConfig.DefaultMaxTables = null;
+            hasChanges = true;
+        }
+
         if (hasChanges)
         {
             await db.SaveChangesAsync();
@@ -164,6 +184,10 @@ public class CtrAdminSlashCommands(
             ? $"🟢 Activé (création automatique tous les {guildConfig.RenewIntervalDays} jours à échéance)"
             : "⚪ Désactivé";
 
+        var maxTablesStr = guildConfig.DefaultMaxTables.HasValue
+            ? $"{guildConfig.DefaultMaxTables.Value} table(s) max"
+            : "Illimité";
+
         var embed = new EmbedBuilder()
             .WithTitle("⚙️ Configuration CTR-Roster")
             .WithColor(hasChanges ? Color.Green : Color.Blue)
@@ -171,8 +195,9 @@ public class CtrAdminSlashCommands(
             .AddField("Salon des sessions", currentChannelStr, inline: true)
             .AddField("Salon restreint", allowedChannelStr, inline: true)
             .AddField("Rôle Admin", currentRoleStr, inline: true)
-            .AddField("Renouvellement auto", renewStr, inline: false)
-            .WithFooter("Pour modifier : /ctr-config [salon_sessions] [salon_restreint] [role_admin] [auto_renouvellement]")
+            .AddField("Renouvellement auto", renewStr, inline: true)
+            .AddField("Tables max par défaut", maxTablesStr, inline: true)
+            .WithFooter("Pour modifier : /ctr-config [salon_sessions] [salon_restreint] [role_admin] [max_tables_defaut]")
             .Build();
 
         await FollowupAsync(embed: embed, ephemeral: true);
@@ -182,7 +207,8 @@ public class CtrAdminSlashCommands(
     public async Task CreateSessionAsync(
         [Summary("date", "Date de la session (ex: 2026-09-18 ou 18/09/2026)")] string dateInput,
         [Summary("heure", "Heure de début (ex: 20:00 ou 20h00)")] string timeInput,
-        [Summary("salon", "Salon où poster la Card (défaut: salon configuré ou actuel)")] ITextChannel? targetChannel = null)
+        [Summary("salon", "Salon où poster la Card (défaut: salon configuré ou actuel)")] ITextChannel? targetChannel = null,
+        [Summary("max_tables", "Nombre maximum de tables pour cette session (défaut: valeur serveur ou illimité)")] int? maxTables = null)
     {
         if (!await IsAdminAsync())
         {
@@ -213,7 +239,7 @@ public class CtrAdminSlashCommands(
         try
         {
             // 1. Créer l'entité en base (qui clôture automatiquement les anciennes sessions ouvertes)
-            var session = await createSessionHandler.HandleAsync(scheduledDate, channel.Id, Context.Guild.Id);
+            var session = await createSessionHandler.HandleAsync(scheduledDate, channel.Id, Context.Guild.Id, maxTables);
 
             // 2. Générer et poster le message initial sur le salon
             var (embed, components) = renderer.BuildSessionCard(session);
@@ -223,12 +249,61 @@ public class CtrAdminSlashCommands(
             session.DiscordMessageId = postedMessage.Id;
             await db.SaveChangesAsync();
 
-            await FollowupAsync($"✅ Session du **{scheduledDate:dddd dd MMMM yyyy à HH:mm}** créée avec succès sur <#{channel.Id}> !", ephemeral: true);
+            string capStr = session.MaxTables.HasValue ? $" • Capacité : **{session.MaxTables.Value} tables max**" : "";
+            await FollowupAsync($"✅ Session du **{scheduledDate:dddd dd MMMM yyyy à HH:mm}** créée avec succès sur <#{channel.Id}>{capStr} !", ephemeral: true);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors de la création de session.");
             await FollowupAsync("❌ Erreur lors de la création de la session.", ephemeral: true);
+        }
+    }
+
+    [SlashCommand("ctr-session-capacity", "Définit ou modifie le nombre maximum de tables pour une session")]
+    public async Task SetSessionCapacityAsync(
+        [Summary("max_tables", "Nombre maximum de tables (0 ou vide pour illimité)")] int? maxTables = null,
+        [Summary("session_id", "ID de la session (optionnel : prend la session active du salon par défaut)")] string? sessionIdStr = null)
+    {
+        await DeferAsync(ephemeral: true);
+
+        if (!await IsAdminAsync())
+        {
+            await FollowupAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            return;
+        }
+
+        Guid targetSessionId = Guid.Empty;
+        if (!string.IsNullOrWhiteSpace(sessionIdStr) && Guid.TryParse(sessionIdStr, out var parsedGuid))
+        {
+            targetSessionId = parsedGuid;
+        }
+        else
+        {
+            var channelId = Context.Channel.Id;
+            var guildId = Context.Guild.Id;
+            var activeSession = await db.GameSessions
+                .FirstOrDefaultAsync(s => s.DiscordChannelId == channelId && (s.GuildId == guildId || s.GuildId == 0) && s.Status == SessionStatus.Open);
+
+            if (activeSession == null)
+            {
+                await FollowupAsync("⚠️ Aucune session active n'a été trouvée sur ce salon. Spécifie l'ID de la session via le paramètre `session_id`.", ephemeral: true);
+                return;
+            }
+
+            targetSessionId = activeSession.Id;
+        }
+
+        try
+        {
+            int? effectiveCap = (maxTables.HasValue && maxTables.Value > 0) ? maxTables.Value : null;
+            var updatedSession = await setSessionCapacityHandler.HandleAsync(targetSessionId, effectiveCap);
+
+            string capStr = updatedSession.MaxTables.HasValue ? $"{updatedSession.MaxTables.Value} table(s) maximum" : "Illimitée";
+            await FollowupAsync($"✅ Capacité de la session du **{updatedSession.ScheduledDate:dddd dd MMMM yyyy à HH:mm}** mise à jour : **{capStr}** !", ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            await FollowupAsync($"⚠️ {ex.Message}", ephemeral: true);
         }
     }
 
