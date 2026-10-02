@@ -1,19 +1,23 @@
-# Visual Studio / .NET / Rider
+# IDE & Editors
 bin/
 obj/
 *.user
 *.userosscache
 *.sln.docstates
 .idea/
+.vscode/
 *.suo
 *.userprefs
 *.pidb
 
 # Environment & Local Secrets
-appsettings.Development.json
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json.example
 *.env
 *.local
 .env.*
+docker-compose.override.yml
 
 # SQLite Local Database
 *.db
