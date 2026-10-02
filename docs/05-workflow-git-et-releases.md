@@ -75,45 +75,73 @@ git branch -d feature/nom-de-la-feature
 
 ---
 
-## 3. Processus de Release (Livraison Raspberry Pi)
+## 3. Stratégie de Versioning & Processus de Release
 
-Pour créer une nouvelle version officielle (ex: passage à `v1.1.0`) :
+Le projet suit rigoureusement la convention [Semantic Versioning (SemVer)](https://semver.org/lang/fr/) adaptée aux besoins du projet :
 
-### Étape 1 : Branche de Release
+```
+Format de version : v[MAJEUR].[MINEUR].[PATCH][-BETA]
+Exemples : v0.3.0-beta, v0.3.1-beta, v0.3.0, v1.0.0
+```
+
+### 3.1. Règles d'incrémentation
+
+| Type | Format | Quand l'utiliser ? | Qui décide ? |
+| :--- | :--- | :--- | :--- |
+| **PATCH** | `0.X.Y` ➔ `0.X.Y+1` | Ajustements techniques, refactoring, corrections de bugs (fixes), optimisation de tests ou outillage. | Automatique (Développeur / IA) |
+| **MINEURE** | `0.X.Y` ➔ `0.X+1.0` | Ajout d'une nouvelle fonctionnalité métier visible pour les utilisateurs. | À chaque nouvelle feature |
+| **MAJEURE** | `X.Y.Z` ➔ `X+1.0.0` | Refonte majeure de l'application ou version de référence. | **Exclusivement le Product Owner (Utilisateur)** |
+
+### 3.2. Règle de transition Beta ➔ Stable (Mineure non-beta)
+- **Phase Beta (ex: `v0.3.0-beta`)** : Toute nouvelle version contenant des features est d'abord déployée en suffixe `-beta` sur le Raspberry Pi pour observation.
+- **Promotion en Stable (ex: `v0.3.0`)** : La version est promue en version mineure stable officielle dès lors que :
+  1. La version a tourné en production réelle sur le serveur Discord sans incident ni bug bloquant constaté.
+  2. Le Product Owner donne son accord explicite pour le passage en version stable.
+
+---
+
+### 3.3. Règle d'or de Mise à Jour Documentaire
+> ⚠️ **IMPACT DOCUMENTAIRE OBLIGATOIRE :**  
+> À chaque nouvelle fonctionnalité, modification de commande ou ajustement d'interaction, le guide utilisateur ([`docs/GUIDE_UTILISATEUR.md`](GUIDE_UTILISATEUR.md)) **doit impérativement être mis à jour** dans la même branche de travail avant toute fusion dans `main`. Le code et sa documentation ne doivent jamais diverger.
+
+---
+
+### 3.4. Étapes d'une Release (Livraison Raspberry Pi)
+
+Pour préparer et livrer une version officielle (ex: `v0.3.1-beta` ou `v0.4.0-beta`) :
+
+#### Étape 1 : Branche de Release
 ```bash
 git checkout main
 git pull origin main
-git checkout -b release/v1.1.0
+git checkout -b release/v0.3.1-beta
 ```
 
-### Étape 2 : Vérifications et Validation Finale
+#### Étape 2 : Vérifications et Validation
 1. Lancer l'intégralité des tests :
    ```bash
    dotnet test
    ```
-2. Tester le build Docker complet :
-   ```bash
-   docker compose build
-   ```
-3. Mettre à jour la documentation ou le numéro de version si nécessaire.
+2. Mettre à jour `Directory.Build.props` avec le nouveau numéro de version.
+3. Renseigner les nouveautés dans `CHANGELOG.md`.
 4. Valider le commit de release :
    ```bash
-   git commit -am "chore: release v1.1.0"
+   git commit -am "chore(release): bump version to v0.3.1-beta"
    ```
 
-### Étape 3 : Taguer et Fusionner dans `main`
+#### Étape 3 : Taguer et Fusionner dans `main`
 ```bash
 git checkout main
-git merge --no-ff release/v1.1.0 -m "release: v1.1.0"
+git merge --no-ff release/v0.3.1-beta -m "Merge release branch 'release/v0.3.1-beta' into main"
 
 # Création du tag Git annoté
-git tag -a v1.1.0 -m "Version 1.1.0 : description des nouveautés"
+git tag -a v0.3.1-beta -m "Release v0.3.1-beta : description des changements"
 
-# Pousser main et les tags sur GitHub
+# Pousser main et les tags sur le dépôt distant
 git push origin main --tags
 
-# Nettoyage de la branche de release
-git branch -d release/v1.1.0
+# Suppression de la branche de release locale
+git branch -d release/v0.3.1-beta
 ```
 
 ---
@@ -123,12 +151,18 @@ git branch -d release/v1.1.0
 Sur le Raspberry Pi (`/opt/ctr-roster/`) :
 
 ```bash
-# 1. Récupérer la dernière version ou le tag ciblé
-git pull origin main
+# 1. Récupérer les derniers commits et tags
+git fetch --tags
 
-# Optionnel : pointer sur un tag spécifique
-# git checkout v1.1.0
+# 2. Pointer sur la version souhaitée
+git checkout v0.3.1-beta
 
-# 2. Reconstruire et relancer le conteneur sans interruption prolongée
-docker compose up -d --build
+# 3. Compiler pour ARM/Linux
+dotnet publish src/CtrRoster.Presentation/CtrRoster.Presentation.csproj -c Release -o ./publish
+
+# 4. Redémarrer le service systemd
+sudo systemctl restart ctr-roster
+
+# 5. Vérifier les logs
+journalctl -u ctr-roster -f
 ```
