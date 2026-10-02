@@ -3,6 +3,21 @@
 Toutes les modifications notables apportées à ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.3.1-beta] - 2026-10-03
+
+### 🐛 Corrections (Fixes)
+- **Suppression du dédoublement de la Card Discord** :
+  - Correction dans `DiscordMessageRenderer` lors de la mise à jour (`message.ModifyAsync`).
+  - Suppression de l'assignation redondante de `msg.Embed = embed;` pour ne conserver que le tableau unitaire `msg.Embeds = new[] { embed };`.
+  - Résout le comportement de l'API Discord v10 qui interprétait les deux champs simultanément et affichait deux cartes identiques empilées sur le message.
+
+### ⚙️ Déploiement & Environnements (DevOps)
+- **Modèles de configuration multi-environnements** :
+  - Ajout des templates `.env.dev.example` et `.env.prod.example` permettant de faire tourner deux instances du bot (DEV et PRD) en parallèle sur un même hôte (ex: Raspberry Pi) avec isolation stricte des bases SQLite et des tokens Discord.
+  - Paramétrage dynamique du nom de conteneur, du volume de données et de l'environnement d'exécution via variables d'environnement dans `docker-compose.yml`.
+
+---
+
 ## [0.3.0-beta] - 2026-10-03
 
 ### ✨ Nouvelles Fonctionnalités (Features)
