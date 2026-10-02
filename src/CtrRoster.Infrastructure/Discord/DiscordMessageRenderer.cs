@@ -57,7 +57,6 @@ public class DiscordMessageRenderer(
 
         await message.ModifyAsync(msg =>
         {
-            msg.Embed = embed;
             msg.Embeds = new[] { embed };
             msg.Components = components;
         });
