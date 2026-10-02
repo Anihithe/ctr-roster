@@ -8,6 +8,11 @@ public class Game
     public Guid Id { get; set; } = Guid.NewGuid();
 
     /// <summary>
+    /// Identifiant du serveur Discord (GuildId) auquel ce jeu appartient.
+    /// </summary>
+    public ulong GuildId { get; set; }
+
+    /// <summary>
     /// Nom officiel ou usuel du jeu (ex: Warhammer 40k, Le Seigneur des Anneaux, Catan).
     /// </summary>
     public string Name { get; set; } = string.Empty;

@@ -129,7 +129,14 @@ public class InteractionRouter(
                 using (var scope = scopeFactory.CreateScope())
                 {
                     var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-                    var activeGames = await db.Games.Where(g => g.IsActive).OrderBy(g => g.Name).ToListAsync();
+                    await SyncSessionCardMessageAsync(db, sessionId, component);
+
+                    var session = await db.GameSessions.FirstOrDefaultAsync(s => s.Id == sessionId);
+                    var guildId = session?.GuildId ?? (component.Channel as SocketGuildChannel)?.Guild.Id ?? 0;
+                    var activeGames = await db.Games
+                        .Where(g => g.IsActive && (g.GuildId == guildId || g.GuildId == 0))
+                        .OrderBy(g => g.Name)
+                        .ToListAsync();
 
                     var existing = await db.PlayerAvailabilities
                         .FirstOrDefaultAsync(a => a.GameSessionId == sessionId && a.DiscordUserId == component.User.Id);
@@ -208,6 +215,9 @@ public class InteractionRouter(
             case "absent":
                 using (var scope = scopeFactory.CreateScope())
                 {
+                    var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                    await SyncSessionCardMessageAsync(db, sessionId, component);
+
                     var handler = scope.ServiceProvider.GetRequiredService<SetAbsentHandler>();
                     var result = await handler.HandleAsync(sessionId, component.User.Id, component.User.Username);
                     await component.RespondAsync(result, ephemeral: true);
@@ -256,7 +266,14 @@ public class InteractionRouter(
                 using (var scope = scopeFactory.CreateScope())
                 {
                     var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-                    var activeGames = await db.Games.Where(g => g.IsActive).OrderBy(g => g.Name).ToListAsync();
+                    await SyncSessionCardMessageAsync(db, sessionId, component);
+
+                    var session = await db.GameSessions.FirstOrDefaultAsync(s => s.Id == sessionId);
+                    var guildId = session?.GuildId ?? (component.Channel as SocketGuildChannel)?.Guild.Id ?? 0;
+                    var activeGames = await db.Games
+                        .Where(g => g.IsActive && (g.GuildId == guildId || g.GuildId == 0))
+                        .OrderBy(g => g.Name)
+                        .ToListAsync();
 
                     // Si aucun jeu n'est dans le catalogue, ouvrir directement la modale de saisie libre
                     if (activeGames.Count == 0)
@@ -322,8 +339,13 @@ public class InteractionRouter(
                 var target = args.Length > 0 ? args[0] : "current";
                 using (var scope = scopeFactory.CreateScope())
                 {
-                    var leaveHandler = scope.ServiceProvider.GetRequiredService<LeaveTableHandler>();
                     var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                    if (target == "current")
+                    {
+                        await SyncSessionCardMessageAsync(db, sessionId, component);
+                    }
+
+                    var leaveHandler = scope.ServiceProvider.GetRequiredService<LeaveTableHandler>();
 
                     Guid tableToLeaveId;
                     if (target == "current")
@@ -350,6 +372,32 @@ public class InteractionRouter(
                     await component.RespondAsync(result, ephemeral: true);
                 }
                 break;
+        }
+    }
+
+    private static async Task SyncSessionCardMessageAsync(IAppDbContext db, Guid sessionId, SocketMessageComponent component)
+    {
+        if (sessionId == Guid.Empty || component.Message == null) return;
+        var session = await db.GameSessions.FirstOrDefaultAsync(s => s.Id == sessionId);
+        if (session == null) return;
+
+        bool changed = false;
+        var guildId = (component.Channel as SocketGuildChannel)?.Guild.Id ?? 0;
+        if (session.GuildId == 0 && guildId != 0)
+        {
+            session.GuildId = guildId;
+            changed = true;
+        }
+
+        if (session.DiscordMessageId != component.Message.Id)
+        {
+            session.DiscordMessageId = component.Message.Id;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync();
         }
     }
 
@@ -422,6 +470,9 @@ public class InteractionRouter(
                 var tableId = Guid.Parse(valueParts[1]);
 
                 using var scope = scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                await SyncSessionCardMessageAsync(db, sessionId, component);
+
                 var joinHandler = scope.ServiceProvider.GetRequiredService<JoinTableHandler>();
                 var message = await joinHandler.HandleAsync(
                     tableId,

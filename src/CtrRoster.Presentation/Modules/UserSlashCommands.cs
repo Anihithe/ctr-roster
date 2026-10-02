@@ -14,10 +14,22 @@ public class UserSlashCommands(IAppDbContext db) : InteractionModuleBase<SocketI
         await DeferAsync(ephemeral: true);
 
         var channelId = Context.Channel.Id;
+        var guildId = Context.Guild?.Id ?? 0;
+
+        if (guildId != 0)
+        {
+            var config = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == guildId);
+            if (config?.AllowedChannelId.HasValue == true && config.AllowedChannelId.Value != 0 && config.AllowedChannelId.Value != channelId)
+            {
+                await FollowupAsync($"⛔ Cette commande ne peut être utilisée que dans le salon <#{config.AllowedChannelId.Value}>.", ephemeral: true);
+                return;
+            }
+        }
+
         var session = await db.GameSessions
             .Include(s => s.Tables)
             .Include(s => s.Availabilities)
-            .FirstOrDefaultAsync(s => s.DiscordChannelId == channelId && s.Status == SessionStatus.Open);
+            .FirstOrDefaultAsync(s => (guildId == 0 || s.GuildId == guildId || s.GuildId == 0) && s.DiscordChannelId == channelId && s.Status == SessionStatus.Open);
 
         if (session == null)
         {

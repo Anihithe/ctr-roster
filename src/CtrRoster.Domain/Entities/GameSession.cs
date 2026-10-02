@@ -10,6 +10,11 @@ public class GameSession
     public Guid Id { get; set; } = Guid.NewGuid();
 
     /// <summary>
+    /// Identifiant du serveur Discord (GuildId) organisant la session.
+    /// </summary>
+    public ulong GuildId { get; set; }
+
+    /// <summary>
     /// Date et heure UTC de création de la session.
     /// </summary>
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

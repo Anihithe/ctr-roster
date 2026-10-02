@@ -10,11 +10,12 @@ public class CreateSessionHandler(IAppDbContext db)
     public async Task<GameSession> HandleAsync(
         DateTime scheduledDate,
         ulong channelId,
+        ulong guildId = 0,
         CancellationToken ct = default)
     {
         // Règle métier : Clôturer automatiquement les sessions précédentes encore ouvertes sur ce canal
         var openSessions = await db.GameSessions
-            .Where(s => s.DiscordChannelId == channelId && s.Status == SessionStatus.Open)
+            .Where(s => s.DiscordChannelId == channelId && (s.GuildId == guildId || s.GuildId == 0) && s.Status == SessionStatus.Open)
             .ToListAsync(ct);
 
         foreach (var oldSession in openSessions)
@@ -26,6 +27,7 @@ public class CreateSessionHandler(IAppDbContext db)
         {
             ScheduledDate = scheduledDate,
             DiscordChannelId = channelId,
+            GuildId = guildId,
             Status = SessionStatus.Open,
             CreatedAtUtc = DateTime.UtcNow
         };

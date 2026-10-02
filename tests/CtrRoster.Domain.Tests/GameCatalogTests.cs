@@ -39,22 +39,66 @@ public class GameCatalogTests : IDisposable
         using var db = new AppDbContext(_options);
         var handler = new AddGameHandler(db);
 
-        var game = await handler.HandleAsync("Ark Nova", 1, 4);
+        var game = await handler.HandleAsync(1001, "Ark Nova", 1, 4);
 
         Assert.NotNull(game);
         Assert.Equal("Ark Nova", game.Name);
+        Assert.Equal((ulong)1001, game.GuildId);
         Assert.True(game.IsActive);
         Assert.Single(db.Games);
     }
 
     [Fact]
-    public async Task AddGame_Duplicate_ShouldThrowDomainException()
+    public async Task AddGame_DuplicateOnSameGuild_ShouldThrowDomainException()
     {
         using var db = new AppDbContext(_options);
         var handler = new AddGameHandler(db);
-        await handler.HandleAsync("Catan", 3, 4);
+        await handler.HandleAsync(1001, "Catan", 3, 4);
 
-        await Assert.ThrowsAsync<DomainException>(() => handler.HandleAsync("catan", 3, 4));
+        await Assert.ThrowsAsync<DomainException>(() => handler.HandleAsync(1001, "catan", 3, 4));
+    }
+
+    [Fact]
+    public async Task AddGame_SameNameOnDifferentGuilds_ShouldSucceed()
+    {
+        using var db = new AppDbContext(_options);
+        var handler = new AddGameHandler(db);
+
+        var game1 = await handler.HandleAsync(1001, "Catan", 3, 4);
+        var game2 = await handler.HandleAsync(2002, "Catan", 3, 4);
+
+        Assert.NotNull(game1);
+        Assert.NotNull(game2);
+        Assert.Equal((ulong)1001, game1.GuildId);
+        Assert.Equal((ulong)2002, game2.GuildId);
+        Assert.Equal(2, await db.Games.CountAsync());
+    }
+
+    [Fact]
+    public async Task GetActiveGames_ShouldFilterByGuildId_AndIncludeLegacyGames()
+    {
+        using var db = new AppDbContext(_options);
+        var addHandler = new AddGameHandler(db);
+        await addHandler.HandleAsync(1001, "Guild1 Game", 2, 4);
+        await addHandler.HandleAsync(2002, "Guild2 Game", 2, 4);
+
+        // Add a legacy global game (GuildId = 0)
+        db.Games.Add(new Game { GuildId = 0, Name = "Global Legacy Game", IsActive = true });
+        await db.SaveChangesAsync();
+
+        var queryHandler = new GetActiveGamesHandler(db);
+
+        var guild1Games = await queryHandler.HandleAsync(1001);
+        Assert.Equal(2, guild1Games.Count);
+        Assert.Contains(guild1Games, g => g.Name == "Guild1 Game");
+        Assert.Contains(guild1Games, g => g.Name == "Global Legacy Game");
+        Assert.DoesNotContain(guild1Games, g => g.Name == "Guild2 Game");
+
+        var guild2Games = await queryHandler.HandleAsync(2002);
+        Assert.Equal(2, guild2Games.Count);
+        Assert.Contains(guild2Games, g => g.Name == "Guild2 Game");
+        Assert.Contains(guild2Games, g => g.Name == "Global Legacy Game");
+        Assert.DoesNotContain(guild2Games, g => g.Name == "Guild1 Game");
     }
 
     [Fact]
@@ -62,13 +106,29 @@ public class GameCatalogTests : IDisposable
     {
         using var db = new AppDbContext(_options);
         var addHandler = new AddGameHandler(db);
-        await addHandler.HandleAsync("Nemesis", 1, 5);
+        await addHandler.HandleAsync(1001, "Nemesis", 1, 5);
 
         var removeHandler = new RemoveGameHandler(db);
-        var removed = await removeHandler.HandleAsync("nemesis");
+        var removed = await removeHandler.HandleAsync(1001, "nemesis");
 
         Assert.Equal("Nemesis", removed.Name);
         Assert.Empty(db.Games);
+    }
+
+    [Fact]
+    public async Task RemoveGame_DifferentGuild_ShouldNotRemoveGameFromOtherGuild()
+    {
+        using var db = new AppDbContext(_options);
+        var addHandler = new AddGameHandler(db);
+        await addHandler.HandleAsync(1001, "Root", 2, 4);
+
+        var removeHandler = new RemoveGameHandler(db);
+
+        // Guild 2002 tries to remove Guild 1001's game -> should throw DomainException
+        await Assert.ThrowsAsync<DomainException>(() => removeHandler.HandleAsync(2002, "Root"));
+
+        // Game should still exist on Guild 1001
+        Assert.Single(db.Games);
     }
 
     [Fact]
@@ -77,6 +137,6 @@ public class GameCatalogTests : IDisposable
         using var db = new AppDbContext(_options);
         var removeHandler = new RemoveGameHandler(db);
 
-        await Assert.ThrowsAsync<DomainException>(() => removeHandler.HandleAsync("UnknownGame"));
+        await Assert.ThrowsAsync<DomainException>(() => removeHandler.HandleAsync(1001, "UnknownGame"));
     }
 }

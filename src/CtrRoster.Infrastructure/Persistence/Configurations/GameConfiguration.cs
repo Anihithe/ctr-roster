@@ -17,10 +17,13 @@ public class GameConfiguration : IEntityTypeConfiguration<Game>
             .IsRequired()
             .HasMaxLength(100);
 
+        builder.Property(g => g.GuildId)
+            .IsRequired();
+
         builder.Property(g => g.IsActive)
             .IsRequired();
 
-        builder.HasIndex(g => g.Name);
-        builder.HasIndex(g => g.IsActive);
+        builder.HasIndex(g => new { g.GuildId, g.Name });
+        builder.HasIndex(g => new { g.GuildId, g.IsActive });
     }
 }
