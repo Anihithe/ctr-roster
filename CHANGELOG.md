@@ -3,6 +3,23 @@
 Toutes les modifications notables apportées à ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.2.0-beta] - 2026-10-02
+
+### ✨ Nouvelles Fonctionnalités (Features)
+- **Gestion des Limites de Capacité de Tables (Point 3)** :
+  - **Capacité par défaut du serveur** : Configuration d'un nombre maximum de tables par défaut pour les sessions via `/ctr-config max_tables_defaut:<nombre>` (supprimable avec `reset_max_tables:true`).
+  - **Capacité unitaire par session** : 
+    - Définition à la création de la session via `/ctr-session-create ... max_tables:<nombre>`.
+    - Modification unitaire sur une session existante via la nouvelle commande `/ctr-session-capacity max_tables:<nombre> [session_id:<id>]`.
+  - **Affichage dynamique sur la Card Discord** :
+    - En-tête des tables mis à jour automatiquement (ex: `⚔️ TABLES FORMÉES (3/5)`).
+    - Jauge d'état dans la description : `🪑 Capacité : 3/5 tables` ou `🔴 Capacité atteinte (5/5 tables)`.
+  - **Sécurité et ergonomie anti-surréservation** :
+    - Dès que le quota de tables est atteint, le bouton *"Créer une table"* passe automatiquement en état grisé désactivé (`🛑 Créer une table (Complet)`).
+    - Protection stricte dans la couche métier (`CreateTableHandler`) et le routeur d'interactions contre toute ouverture de table au-delà du quota.
+  - **Migration de schéma SQLite sans perte** :
+    - Vérification et ajout automatique des colonnes `DefaultMaxTables` (`GuildConfigs`) et `MaxTables` (`GameSessions`).
+
 ---
 
 ## [0.1.0-beta] - 2026-10-02
