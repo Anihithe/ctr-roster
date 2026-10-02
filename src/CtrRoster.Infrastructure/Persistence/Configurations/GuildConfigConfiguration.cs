@@ -19,6 +19,9 @@ public class GuildConfigConfiguration : IEntityTypeConfiguration<GuildConfig>
         builder.Property(c => c.DefaultChannelId)
             .IsRequired(false);
 
+        builder.Property(c => c.AllowedChannelId)
+            .IsRequired(false);
+
         builder.Property(c => c.AutoRenewSessions)
             .IsRequired();
 

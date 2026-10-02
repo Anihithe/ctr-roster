@@ -34,7 +34,12 @@ public class DiscordMessageRenderer(
             return;
         }
 
-        var channel = discordClient.GetChannel(session.DiscordChannelId) as IMessageChannel;
+        IMessageChannel? channel = discordClient.GetChannel(session.DiscordChannelId) as IMessageChannel;
+        if (channel == null)
+        {
+            channel = await discordClient.Rest.GetChannelAsync(session.DiscordChannelId) as IMessageChannel;
+        }
+
         if (channel == null)
         {
             logger.LogWarning("Salon Discord {ChannelId} introuvable.", session.DiscordChannelId);
@@ -53,6 +58,7 @@ public class DiscordMessageRenderer(
         await message.ModifyAsync(msg =>
         {
             msg.Embed = embed;
+            msg.Embeds = new[] { embed };
             msg.Components = components;
         });
 
@@ -142,7 +148,32 @@ public class DiscordMessageRenderer(
                 index++;
             }
 
-            embedBuilder.AddField("⚔️ TABLES FORMÉES", string.Join("\n\n", tableDetails), inline: false);
+            // Découpage automatique pour respecter la limite stricte de 1024 caractères par champ Discord
+            var currentFieldContent = new List<string>();
+            int currentLength = 0;
+            int partIndex = 1;
+
+            for (int i = 0; i < tableDetails.Count; i++)
+            {
+                var item = tableDetails[i];
+                if (currentLength + item.Length + 2 > 1000 && currentFieldContent.Count > 0)
+                {
+                    string fieldName = partIndex == 1 ? "⚔️ TABLES FORMÉES" : $"⚔️ TABLES FORMÉES (suite {partIndex})";
+                    embedBuilder.AddField(fieldName, string.Join("\n\n", currentFieldContent), inline: false);
+                    currentFieldContent.Clear();
+                    currentLength = 0;
+                    partIndex++;
+                }
+
+                currentFieldContent.Add(item);
+                currentLength += item.Length + 2;
+            }
+
+            if (currentFieldContent.Count > 0)
+            {
+                string fieldName = partIndex == 1 ? "⚔️ TABLES FORMÉES" : $"⚔️ TABLES FORMÉES (suite {partIndex})";
+                embedBuilder.AddField(fieldName, string.Join("\n\n", currentFieldContent), inline: false);
+            }
         }
         else
         {

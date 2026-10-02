@@ -13,6 +13,9 @@ public class GameSessionConfiguration : IEntityTypeConfiguration<GameSession>
         builder.HasKey(s => s.Id);
         builder.Property(s => s.Id).ValueGeneratedNever();
 
+        builder.Property(s => s.GuildId)
+            .IsRequired();
+
         builder.Property(s => s.ScheduledDate)
             .IsRequired();
 
@@ -26,6 +29,7 @@ public class GameSessionConfiguration : IEntityTypeConfiguration<GameSession>
             .IsRequired()
             .HasConversion<int>();
 
+        builder.HasIndex(s => new { s.GuildId, s.Status });
         builder.HasIndex(s => s.Status);
         builder.HasIndex(s => s.ScheduledDate);
 

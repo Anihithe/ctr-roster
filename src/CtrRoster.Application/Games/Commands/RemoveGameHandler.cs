@@ -7,7 +7,7 @@ namespace CtrRoster.Application.Games.Commands;
 
 public class RemoveGameHandler(IAppDbContext db)
 {
-    public async Task<Game> HandleAsync(string name, CancellationToken ct = default)
+    public async Task<Game> HandleAsync(ulong guildId, string name, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -16,11 +16,11 @@ public class RemoveGameHandler(IAppDbContext db)
 
         string trimmedName = name.Trim();
         var game = await db.Games.FirstOrDefaultAsync(
-            g => g.Name.ToLower() == trimmedName.ToLower(), ct);
+            g => (g.GuildId == guildId || g.GuildId == 0) && g.Name.ToLower() == trimmedName.ToLower(), ct);
 
         if (game == null)
         {
-            throw new DomainException($"Le jeu '{trimmedName}' est introuvable dans le catalogue.");
+            throw new DomainException($"Le jeu '{trimmedName}' est introuvable dans le catalogue de ce serveur.");
         }
 
         db.Games.Remove(game);

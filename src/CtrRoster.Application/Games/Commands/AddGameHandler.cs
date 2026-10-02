@@ -8,9 +8,10 @@ namespace CtrRoster.Application.Games.Commands;
 public class AddGameHandler(IAppDbContext db)
 {
     public async Task<Game> HandleAsync(
+        ulong guildId,
         string name,
-        int? minPlayers,
-        int? maxPlayers,
+        int? minPlayers = null,
+        int? maxPlayers = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -19,14 +20,15 @@ public class AddGameHandler(IAppDbContext db)
         }
 
         string trimmedName = name.Trim();
-        var exists = await db.Games.AnyAsync(g => g.Name.ToLower() == trimmedName.ToLower(), ct);
+        var exists = await db.Games.AnyAsync(g => g.GuildId == guildId && g.Name.ToLower() == trimmedName.ToLower(), ct);
         if (exists)
         {
-            throw new DomainException($"Le jeu '{trimmedName}' existe déjà dans le catalogue.");
+            throw new DomainException($"Le jeu '{trimmedName}' existe déjà dans le catalogue de ce serveur.");
         }
 
         var game = new Game
         {
+            GuildId = guildId,
             Name = trimmedName,
             MinPlayers = minPlayers,
             MaxPlayers = maxPlayers,

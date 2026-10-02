@@ -28,9 +28,8 @@ public class CtrAdminSlashCommands(
     {
         if (Context.User is not SocketGuildUser guildUser) return false;
 
-        // 1. Super-Admins / Développeurs autorisés directement par leur User ID Discord (partout)
-        var adminUserIds = GetConfiguredIds("Discord:AdminUserIds", "Discord:AdminUserId");
-        if (adminUserIds.Contains(guildUser.Id)) return true;
+        // 1. Propriétaire du serveur Discord (Server Owner) : toujours tous les droits
+        if (Context.Guild != null && Context.Guild.OwnerId == guildUser.Id) return true;
 
         // 2. Administrateurs Discord ou gestionnaires d'événements du serveur
         if (guildUser.GuildPermissions.Administrator || guildUser.GuildPermissions.ManageGuild || guildUser.GuildPermissions.ManageEvents)
@@ -38,16 +37,23 @@ public class CtrAdminSlashCommands(
             return true;
         }
 
-        // 3. Rôle configuré dynamiquement en base de données pour ce serveur
-        var guildId = Context.Guild.Id;
-        var guildConfig = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == guildId);
-        if (guildConfig?.AdminRoleId.HasValue == true && guildConfig.AdminRoleId.Value != 0 &&
-            guildUser.Roles.Any(r => r.Id == guildConfig.AdminRoleId.Value))
+        // 3. Super-Admins / Développeurs autorisés directement par leur User ID Discord (partout)
+        var adminUserIds = GetConfiguredIds("Discord:AdminUserIds", "Discord:AdminUserId");
+        if (adminUserIds.Contains(guildUser.Id)) return true;
+
+        // 4. Rôle configuré dynamiquement en base de données pour ce serveur
+        var guildId = Context.Guild?.Id ?? 0;
+        if (guildId != 0)
         {
-            return true;
+            var guildConfig = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == guildId);
+            if (guildConfig?.AdminRoleId.HasValue == true && guildConfig.AdminRoleId.Value != 0 &&
+                guildUser.Roles.Any(r => r.Id == guildConfig.AdminRoleId.Value))
+            {
+                return true;
+            }
         }
 
-        // 4. Rôles globaux configurés via appsettings ou user-secrets (ex: rôles de test / staff)
+        // 5. Rôles globaux configurés via appsettings ou .env (ex: rôles de test / staff)
         var globalAdminRoleIds = GetConfiguredIds("Discord:AdminRoleIds", "Discord:AdminRoleId");
         if (guildUser.Roles.Any(r => globalAdminRoleIds.Contains(r.Id)))
         {
@@ -84,9 +90,11 @@ public class CtrAdminSlashCommands(
 
     [SlashCommand("ctr-config", "Affiche ou configure les paramètres du bot pour ce serveur")]
     public async Task ConfigAsync(
-        [Summary("salon", "Salon par défaut où publier les sessions de jeu")] ITextChannel? channel = null,
+        [Summary("salon_sessions", "Salon par défaut où publier les sessions de jeu")] ITextChannel? channel = null,
+        [Summary("salon_restreint", "Restreindre l'utilisation du bot à ce salon uniquement")] ITextChannel? allowedChannel = null,
         [Summary("role_admin", "Rôle administrateur pour gérer le bot")] IRole? adminRole = null,
-        [Summary("auto_renouvellement", "Activer ou désactiver l'ouverture auto de la session suivante (+7 jours)")] bool? autoRenew = null)
+        [Summary("auto_renouvellement", "Activer ou désactiver l'ouverture auto de la session suivante (+7 jours)")] bool? autoRenew = null,
+        [Summary("reset_restriction_salon", "Supprimer la restriction de salon")] bool resetAllowedChannel = false)
     {
         await DeferAsync(ephemeral: true);
 
@@ -112,6 +120,17 @@ public class CtrAdminSlashCommands(
             hasChanges = true;
         }
 
+        if (allowedChannel != null)
+        {
+            guildConfig.AllowedChannelId = allowedChannel.Id;
+            hasChanges = true;
+        }
+        else if (resetAllowedChannel)
+        {
+            guildConfig.AllowedChannelId = null;
+            hasChanges = true;
+        }
+
         if (adminRole != null)
         {
             guildConfig.AdminRoleId = adminRole.Id;
@@ -133,6 +152,10 @@ public class CtrAdminSlashCommands(
             ? $"<#{guildConfig.DefaultChannelId.Value}>"
             : (config.GetValue<ulong>("Discord:DefaultChannelId") != 0 ? $"<#{config.GetValue<ulong>("Discord:DefaultChannelId")}> *(config globale)*" : "Non configuré");
 
+        var allowedChannelStr = guildConfig.AllowedChannelId.HasValue && guildConfig.AllowedChannelId.Value != 0
+            ? $"<#{guildConfig.AllowedChannelId.Value}>"
+            : "Aucun (tous les salons)";
+
         var currentRoleStr = guildConfig.AdminRoleId.HasValue && guildConfig.AdminRoleId.Value != 0
             ? $"<@&{guildConfig.AdminRoleId.Value}>"
             : (config.GetValue<ulong>("Discord:AdminRoleId") != 0 ? $"<@&{config.GetValue<ulong>("Discord:AdminRoleId")}> *(config globale)*" : "Non configuré (Admins Discord)");
@@ -145,10 +168,11 @@ public class CtrAdminSlashCommands(
             .WithTitle("⚙️ Configuration CTR-Roster")
             .WithColor(hasChanges ? Color.Green : Color.Blue)
             .WithDescription(hasChanges ? "✅ **Paramètres mis à jour avec succès !**" : "ℹ️ **Configuration actuelle du serveur :**")
-            .AddField("Salon par défaut", currentChannelStr, inline: true)
+            .AddField("Salon des sessions", currentChannelStr, inline: true)
+            .AddField("Salon restreint", allowedChannelStr, inline: true)
             .AddField("Rôle Admin", currentRoleStr, inline: true)
             .AddField("Renouvellement auto", renewStr, inline: false)
-            .WithFooter("Pour modifier : /ctr-config salon:#nom-du-salon role_admin:@NomRole auto_renouvellement:true/false")
+            .WithFooter("Pour modifier : /ctr-config [salon_sessions] [salon_restreint] [role_admin] [auto_renouvellement]")
             .Build();
 
         await FollowupAsync(embed: embed, ephemeral: true);
@@ -189,7 +213,7 @@ public class CtrAdminSlashCommands(
         try
         {
             // 1. Créer l'entité en base (qui clôture automatiquement les anciennes sessions ouvertes)
-            var session = await createSessionHandler.HandleAsync(scheduledDate, channel.Id);
+            var session = await createSessionHandler.HandleAsync(scheduledDate, channel.Id, Context.Guild.Id);
 
             // 2. Générer et poster le message initial sur le salon
             var (embed, components) = renderer.BuildSessionCard(session);
@@ -265,7 +289,7 @@ public class CtrAdminSlashCommands(
 
         try
         {
-            var game = await addGameHandler.HandleAsync(name, minPlayers, maxPlayers);
+            var game = await addGameHandler.HandleAsync(Context.Guild.Id, name, minPlayers, maxPlayers);
             await FollowupAsync($"✅ Le jeu **{game.Name}** a été ajouté au catalogue !", ephemeral: true);
         }
         catch (Exception ex)
@@ -287,7 +311,7 @@ public class CtrAdminSlashCommands(
 
         try
         {
-            var game = await removeGameHandler.HandleAsync(name);
+            var game = await removeGameHandler.HandleAsync(Context.Guild.Id, name);
             await FollowupAsync($"🗑️ Le jeu **{game.Name}** a été supprimé du catalogue !", ephemeral: true);
         }
         catch (Exception ex)
@@ -301,7 +325,11 @@ public class CtrAdminSlashCommands(
     {
         await DeferAsync(ephemeral: true);
 
-        var games = await db.Games.OrderBy(g => g.Name).ToListAsync();
+        var guildId = Context.Guild.Id;
+        var games = await db.Games
+            .Where(g => g.GuildId == guildId || g.GuildId == 0)
+            .OrderBy(g => g.Name)
+            .ToListAsync();
 
         if (games.Count == 0)
         {
@@ -337,14 +365,15 @@ public class CtrAdminSlashCommands(
             return;
         }
 
-        var game = await db.Games.FirstOrDefaultAsync(g => g.Name.ToLower() == gameName.ToLower());
+        var guildId = Context.Guild.Id;
+        var game = await db.Games.FirstOrDefaultAsync(g => (g.GuildId == guildId || g.GuildId == 0) && g.Name.ToLower() == gameName.ToLower());
         if (game == null)
         {
             await FollowupAsync($"⚠️ Le jeu '{gameName}' est introuvable dans le catalogue.", ephemeral: true);
             return;
         }
 
-        var newState = await toggleGameActiveHandler.HandleAsync(game.Id);
+        var newState = await toggleGameActiveHandler.HandleAsync(guildId, game.Id);
         string stateStr = newState ? "activé" : "désactivé";
         await FollowupAsync($"✅ Le jeu **{game.Name}** a été {stateStr} du catalogue.", ephemeral: true);
     }

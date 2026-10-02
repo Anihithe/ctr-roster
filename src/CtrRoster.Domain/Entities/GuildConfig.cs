@@ -21,6 +21,11 @@ public class GuildConfig
     public ulong? DefaultChannelId { get; set; }
 
     /// <summary>
+    /// Salon Discord exclusif autorisé pour les interactions du bot (si restriction activée).
+    /// </summary>
+    public ulong? AllowedChannelId { get; set; }
+
+    /// <summary>
     /// Indique si les sessions doivent être automatiquement renouvelées pour la semaine suivante à leur clôture.
     /// </summary>
     public bool AutoRenewSessions { get; set; } = true;

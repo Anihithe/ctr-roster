@@ -6,10 +6,10 @@ namespace CtrRoster.Application.Games.Queries;
 
 public class GetActiveGamesHandler(IAppDbContext db)
 {
-    public async Task<List<Game>> HandleAsync(CancellationToken ct = default)
+    public async Task<List<Game>> HandleAsync(ulong guildId, CancellationToken ct = default)
     {
         return await db.Games
-            .Where(g => g.IsActive)
+            .Where(g => (g.GuildId == guildId || g.GuildId == 0) && g.IsActive)
             .OrderBy(g => g.Name)
             .ToListAsync(ct);
     }

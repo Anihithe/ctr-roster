@@ -116,7 +116,7 @@ public class SessionLifecycleWorker(
             try
             {
                 // Crée la nouvelle session
-                var newSession = await createSessionHandler.HandleAsync(nextDate, channel.Id, ct);
+                var newSession = await createSessionHandler.HandleAsync(nextDate, channel.Id, guildId, ct);
 
                 // Génère et publie la Card Discord sur le salon
                 var (embed, components) = renderer.BuildSessionCard(newSession);
