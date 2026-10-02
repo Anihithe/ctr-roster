@@ -1,10 +1,13 @@
 using System.Globalization;
+using System.Text.Json;
+using CtrRoster.Application.Common;
 using CtrRoster.Application.Common.Interfaces;
 using CtrRoster.Application.Games.Commands;
 using CtrRoster.Application.Games.Queries;
 using CtrRoster.Application.Sessions.Commands;
 using CtrRoster.Domain.Entities;
 using CtrRoster.Domain.Enums;
+using CtrRoster.Domain.Exceptions;
 using CtrRoster.Infrastructure.Discord;
 using Discord;
 using Discord.Interactions;
@@ -17,6 +20,7 @@ namespace CtrRoster.Presentation.Modules;
 
 public class CtrAdminSlashCommands(
     CreateSessionHandler createSessionHandler,
+    CloseSessionHandler closeSessionHandler,
     SetSessionCapacityHandler setSessionCapacityHandler,
     AddGameHandler addGameHandler,
     RemoveGameHandler removeGameHandler,
@@ -95,10 +99,14 @@ public class CtrAdminSlashCommands(
         [Summary("salon_sessions", "Salon par défaut où publier les sessions de jeu")] ITextChannel? channel = null,
         [Summary("salon_restreint", "Restreindre l'utilisation du bot à ce salon uniquement")] ITextChannel? allowedChannel = null,
         [Summary("role_admin", "Rôle administrateur pour gérer le bot")] IRole? adminRole = null,
-        [Summary("auto_renouvellement", "Activer ou désactiver l'ouverture auto de la session suivante (+7 jours)")] bool? autoRenew = null,
+        [Summary("auto_renouvellement", "Activer ou désactiver l'ouverture auto de la session suivante")] bool? autoRenew = null,
         [Summary("reset_restriction_salon", "Supprimer la restriction de salon")] bool resetAllowedChannel = false,
         [Summary("max_tables_defaut", "Nombre maximum de tables par défaut pour les sessions (vide = illimité)")] int? defaultMaxTables = null,
-        [Summary("reset_max_tables", "Supprimer la limite de tables par défaut")] bool resetDefaultMaxTables = false)
+        [Summary("reset_max_tables", "Supprimer la limite de tables par défaut")] bool resetDefaultMaxTables = false,
+        [Summary("jours_ouverture", "Jours d'ouverture séparés par virgules (ex: mardi,mercredi,jeudi,vendredi,samedi)")] string? openDays = null,
+        [Summary("reset_jours_ouverture", "Réinitialiser les jours d'ouverture (tous les jours ouverts)")] bool resetOpenDays = false,
+        [Summary("intervalle_jours", "Intervalle de renouvellement en jours (ex: 7 pour hebdo, 1 pour quotidien)")] int? renewDays = null,
+        [Summary("intervalle_heures", "Intervalle de renouvellement en heures (ex: 24 pour journalier)")] int? renewHours = null)
     {
         await DeferAsync(ephemeral: true);
 
@@ -163,6 +171,49 @@ public class CtrAdminSlashCommands(
             hasChanges = true;
         }
 
+        if (!string.IsNullOrWhiteSpace(openDays))
+        {
+            var parsedDays = DayParser.ParseDays(openDays);
+            if (parsedDays.Count == 0)
+            {
+                await FollowupAsync("⚠️ Aucun jour valide reconnu dans la liste fournie. Ex: `mardi,mercredi,jeudi,vendredi,samedi`", ephemeral: true);
+                return;
+            }
+            guildConfig.OpenDaysJson = JsonSerializer.Serialize(parsedDays.Select(d => d.ToString()).ToList());
+            hasChanges = true;
+        }
+        else if (resetOpenDays)
+        {
+            guildConfig.OpenDaysJson = null;
+            hasChanges = true;
+        }
+
+        if (renewHours.HasValue)
+        {
+            if (renewHours.Value < 1)
+            {
+                await FollowupAsync("⚠️ L'intervalle en heures doit être au minimum de 1 heure.", ephemeral: true);
+                return;
+            }
+            guildConfig.RenewIntervalHours = renewHours.Value;
+            hasChanges = true;
+        }
+
+        if (renewDays.HasValue)
+        {
+            if (renewDays.Value < 1)
+            {
+                await FollowupAsync("⚠️ L'intervalle en jours doit être au minimum de 1 jour.", ephemeral: true);
+                return;
+            }
+            guildConfig.RenewIntervalDays = renewDays.Value;
+            if (!renewHours.HasValue)
+            {
+                guildConfig.RenewIntervalHours = null;
+            }
+            hasChanges = true;
+        }
+
         if (hasChanges)
         {
             await db.SaveChangesAsync();
@@ -180,9 +231,17 @@ public class CtrAdminSlashCommands(
             ? $"<@&{guildConfig.AdminRoleId.Value}>"
             : (config.GetValue<ulong>("Discord:AdminRoleId") != 0 ? $"<@&{config.GetValue<ulong>("Discord:AdminRoleId")}> *(config globale)*" : "Non configuré (Admins Discord)");
 
+        string renewIntervalDesc = guildConfig.RenewIntervalHours.HasValue
+            ? $"{guildConfig.RenewIntervalHours.Value} heure(s)"
+            : $"{guildConfig.RenewIntervalDays} jour(s)";
+
         var renewStr = guildConfig.AutoRenewSessions
-            ? $"🟢 Activé (création automatique tous les {guildConfig.RenewIntervalDays} jours à échéance)"
+            ? $"🟢 Activé (tous les {renewIntervalDesc} à échéance)"
             : "⚪ Désactivé";
+
+        var openDaysStr = string.IsNullOrWhiteSpace(guildConfig.OpenDaysJson)
+            ? "Tous les jours"
+            : DayParser.FormatDaysFrench(guildConfig.GetOpenDays());
 
         var maxTablesStr = guildConfig.DefaultMaxTables.HasValue
             ? $"{guildConfig.DefaultMaxTables.Value} table(s) max"
@@ -196,8 +255,9 @@ public class CtrAdminSlashCommands(
             .AddField("Salon restreint", allowedChannelStr, inline: true)
             .AddField("Rôle Admin", currentRoleStr, inline: true)
             .AddField("Renouvellement auto", renewStr, inline: true)
+            .AddField("Jours d'ouverture", openDaysStr, inline: true)
             .AddField("Tables max par défaut", maxTablesStr, inline: true)
-            .WithFooter("Pour modifier : /ctr-config [salon_sessions] [salon_restreint] [role_admin] [max_tables_defaut]")
+            .WithFooter("Pour modifier : /ctr-config [options]")
             .Build();
 
         await FollowupAsync(embed: embed, ephemeral: true);
@@ -208,7 +268,8 @@ public class CtrAdminSlashCommands(
         [Summary("date", "Date de la session (ex: 2026-09-18 ou 18/09/2026)")] string dateInput,
         [Summary("heure", "Heure de début (ex: 20:00 ou 20h00)")] string timeInput,
         [Summary("salon", "Salon où poster la Card (défaut: salon configuré ou actuel)")] ITextChannel? targetChannel = null,
-        [Summary("max_tables", "Nombre maximum de tables pour cette session (défaut: valeur serveur ou illimité)")] int? maxTables = null)
+        [Summary("max_tables", "Nombre maximum de tables pour cette session (défaut: valeur serveur ou illimité)")] int? maxTables = null,
+        [Summary("forcer", "Forcer la création même si le jour est configuré comme fermé")] bool force = false)
     {
         if (!await IsAdminAsync())
         {
@@ -238,8 +299,8 @@ public class CtrAdminSlashCommands(
 
         try
         {
-            // 1. Créer l'entité en base (qui clôture automatiquement les anciennes sessions ouvertes)
-            var session = await createSessionHandler.HandleAsync(scheduledDate, channel.Id, Context.Guild.Id, maxTables);
+            // 1. Créer l'entité en base (avec vérification des doublons de créneau et des jours d'ouverture)
+            var session = await createSessionHandler.HandleAsync(scheduledDate, channel.Id, Context.Guild.Id, maxTables, force);
 
             // 2. Générer et poster le message initial sur le salon
             var (embed, components) = renderer.BuildSessionCard(session);
@@ -251,6 +312,10 @@ public class CtrAdminSlashCommands(
 
             string capStr = session.MaxTables.HasValue ? $" • Capacité : **{session.MaxTables.Value} tables max**" : "";
             await FollowupAsync($"✅ Session du **{scheduledDate:dddd dd MMMM yyyy à HH:mm}** créée avec succès sur <#{channel.Id}>{capStr} !", ephemeral: true);
+        }
+        catch (DomainException ex)
+        {
+            await FollowupAsync($"⚠️ {ex.Message}", ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -281,16 +346,25 @@ public class CtrAdminSlashCommands(
         {
             var channelId = Context.Channel.Id;
             var guildId = Context.Guild.Id;
-            var activeSession = await db.GameSessions
-                .FirstOrDefaultAsync(s => s.DiscordChannelId == channelId && (s.GuildId == guildId || s.GuildId == 0) && s.Status == SessionStatus.Open);
+            var activeSessions = await db.GameSessions
+                .Where(s => s.DiscordChannelId == channelId && (s.GuildId == guildId || s.GuildId == 0) && s.Status == SessionStatus.Open)
+                .OrderBy(s => s.ScheduledDate)
+                .ToListAsync();
 
-            if (activeSession == null)
+            if (activeSessions.Count == 0)
             {
                 await FollowupAsync("⚠️ Aucune session active n'a été trouvée sur ce salon. Spécifie l'ID de la session via le paramètre `session_id`.", ephemeral: true);
                 return;
             }
 
-            targetSessionId = activeSession.Id;
+            if (activeSessions.Count > 1)
+            {
+                var list = string.Join("\n", activeSessions.Select(s => $"• {s.ScheduledDate:dddd dd/MM à HH:mm} (`{s.Id}`)"));
+                await FollowupAsync($"⚠️ Plusieurs sessions sont actives sur ce salon. Spécifie le paramètre `session_id` parmi :\n{list}", ephemeral: true);
+                return;
+            }
+
+            targetSessionId = activeSessions[0].Id;
         }
 
         try
@@ -305,6 +379,151 @@ public class CtrAdminSlashCommands(
         {
             await FollowupAsync($"⚠️ {ex.Message}", ephemeral: true);
         }
+    }
+
+    [SlashCommand("ctr-session-close", "Clôture manuellement une session de jeu active")]
+    public async Task CloseSessionAsync(
+        [Summary("date", "Date de la session à clôturer (ex: 2026-10-09 ou 09/10/2026)")] string? dateInput = null,
+        [Summary("heure", "Heure de la session si plusieurs le même jour (ex: 20:00 ou 20h00)")] string? timeInput = null,
+        [Summary("session_id", "ID spécifique de la session à clôturer")] string? sessionIdStr = null)
+    {
+        await DeferAsync(ephemeral: true);
+
+        if (!await IsAdminAsync())
+        {
+            await FollowupAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            return;
+        }
+
+        Guid targetSessionId = Guid.Empty;
+
+        if (!string.IsNullOrWhiteSpace(sessionIdStr))
+        {
+            if (!Guid.TryParse(sessionIdStr.Trim(), out var parsedGuid))
+            {
+                await FollowupAsync("⚠️ Format de `session_id` invalide (attendu: format GUID/UUID).", ephemeral: true);
+                return;
+            }
+            targetSessionId = parsedGuid;
+        }
+        else if (!string.IsNullOrWhiteSpace(dateInput))
+        {
+            DateTime targetDate;
+            bool hasTime = !string.IsNullOrWhiteSpace(timeInput);
+            if (hasTime)
+            {
+                if (!TryParseDateTime(dateInput, timeInput!, out targetDate))
+                {
+                    await FollowupAsync("⚠️ Format de date ou d'heure invalide.\n• Exemples de date : `2026-10-09` ou `09/10/2026`\n• Exemples d'heure : `20:00` ou `20h00`", ephemeral: true);
+                    return;
+                }
+            }
+            else
+            {
+                if (!TryParseDate(dateInput, out targetDate))
+                {
+                    await FollowupAsync("⚠️ Format de date invalide.\n• Exemples : `2026-10-09` ou `09/10/2026`", ephemeral: true);
+                    return;
+                }
+            }
+
+            var channelId = Context.Channel.Id;
+            var guildId = Context.Guild.Id;
+
+            var query = db.GameSessions
+                .Where(s => s.DiscordChannelId == channelId && (s.GuildId == guildId || s.GuildId == 0) && s.Status == SessionStatus.Open);
+
+            List<GameSession> candidates;
+            if (hasTime)
+            {
+                candidates = await query.Where(s => s.ScheduledDate == targetDate).ToListAsync();
+            }
+            else
+            {
+                candidates = await query.Where(s => s.ScheduledDate.Date == targetDate.Date).ToListAsync();
+            }
+
+            if (candidates.Count == 0)
+            {
+                await FollowupAsync($"⚠️ Aucune session active trouvée sur ce salon pour le {targetDate:dddd dd MMMM yyyy}.", ephemeral: true);
+                return;
+            }
+
+            if (candidates.Count > 1)
+            {
+                var list = string.Join("\n", candidates.Select(s => $"• {s.ScheduledDate:dddd dd/MM/yyyy à HH:mm} (ID: `{s.Id}`)"));
+                await FollowupAsync($"⚠️ Plusieurs sessions actives correspondent à cette date :\n{list}\nPrécise l'heure ou le paramètre `session_id`.", ephemeral: true);
+                return;
+            }
+
+            targetSessionId = candidates[0].Id;
+        }
+        else
+        {
+            var channelId = Context.Channel.Id;
+            var guildId = Context.Guild.Id;
+            var activeSessions = await db.GameSessions
+                .Where(s => s.DiscordChannelId == channelId && (s.GuildId == guildId || s.GuildId == 0) && s.Status == SessionStatus.Open)
+                .OrderBy(s => s.ScheduledDate)
+                .ToListAsync();
+
+            if (activeSessions.Count == 0)
+            {
+                await FollowupAsync("⚠️ Aucune session active n'a été trouvée sur ce salon. Spécifie la date ou l'ID via `session_id`.", ephemeral: true);
+                return;
+            }
+
+            if (activeSessions.Count > 1)
+            {
+                var list = string.Join("\n", activeSessions.Select(s => $"• {s.ScheduledDate:dddd dd/MM/yyyy à HH:mm} (ID: `{s.Id}`)"));
+                await FollowupAsync($"⚠️ Plusieurs sessions sont actives sur ce salon :\n{list}\nPrécise la date ou le paramètre `session_id` pour indiquer laquelle clôturer.", ephemeral: true);
+                return;
+            }
+
+            targetSessionId = activeSessions[0].Id;
+        }
+
+        try
+        {
+            var closedSession = await closeSessionHandler.HandleAsync(targetSessionId);
+            await FollowupAsync($"✅ La session du **{closedSession.ScheduledDate:dddd dd MMMM yyyy à HH:mm}** a été clôturée avec succès !", ephemeral: true);
+        }
+        catch (DomainException ex)
+        {
+            await FollowupAsync($"⚠️ {ex.Message}", ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de la clôture de session.");
+            await FollowupAsync("❌ Erreur lors de la clôture de la session.", ephemeral: true);
+        }
+    }
+
+    private static bool TryParseDate(string dateStr, out DateTime result)
+    {
+        result = default;
+        if (string.IsNullOrWhiteSpace(dateStr)) return false;
+
+        string[] formats =
+        [
+            "yyyy-MM-dd",
+            "yyyy/MM/dd",
+            "dd/MM/yyyy",
+            "d/M/yyyy",
+            "dd-MM-yyyy",
+            "d-M-yyyy"
+        ];
+
+        if (DateTime.TryParseExact(dateStr.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
+            return true;
+
+        if (DateTime.TryParse(dateStr.Trim(), new CultureInfo("fr-FR"), DateTimeStyles.None, out result))
+            return true;
+
+        if (DateTime.TryParse(dateStr.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
+            return true;
+
+        return false;
     }
 
     private static bool TryParseDateTime(string dateStr, string timeStr, out DateTime result)

@@ -83,10 +83,12 @@ public static class DatabaseInitializationHelper
                 await alterCmd.ExecuteNonQueryAsync();
             }
 
-            // 3. Vérifier si AllowedChannelId et DefaultMaxTables existent sur GuildConfigs
+            // 3. Vérifier si AllowedChannelId, DefaultMaxTables, RenewIntervalHours et OpenDaysJson existent sur GuildConfigs
             cmd.CommandText = "PRAGMA table_info(GuildConfigs);";
             var hasAllowedChannel = false;
             var hasDefaultMaxTables = false;
+            var hasRenewIntervalHours = false;
+            var hasOpenDaysJson = false;
             using (var reader = await cmd.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
@@ -99,6 +101,14 @@ public static class DatabaseInitializationHelper
                     else if (colName.Equals("DefaultMaxTables", StringComparison.OrdinalIgnoreCase))
                     {
                         hasDefaultMaxTables = true;
+                    }
+                    else if (colName.Equals("RenewIntervalHours", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasRenewIntervalHours = true;
+                    }
+                    else if (colName.Equals("OpenDaysJson", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasOpenDaysJson = true;
                     }
                 }
             }
@@ -116,6 +126,22 @@ public static class DatabaseInitializationHelper
                 logger.LogInformation("Migration schéma SQLite : Ajout de la colonne DefaultMaxTables sur la table GuildConfigs.");
                 using var alterCmd = connection.CreateCommand();
                 alterCmd.CommandText = "ALTER TABLE GuildConfigs ADD COLUMN DefaultMaxTables INTEGER NULL;";
+                await alterCmd.ExecuteNonQueryAsync();
+            }
+
+            if (!hasRenewIntervalHours)
+            {
+                logger.LogInformation("Migration schéma SQLite : Ajout de la colonne RenewIntervalHours sur la table GuildConfigs.");
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE GuildConfigs ADD COLUMN RenewIntervalHours INTEGER NULL;";
+                await alterCmd.ExecuteNonQueryAsync();
+            }
+
+            if (!hasOpenDaysJson)
+            {
+                logger.LogInformation("Migration schéma SQLite : Ajout de la colonne OpenDaysJson sur la table GuildConfigs.");
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE GuildConfigs ADD COLUMN OpenDaysJson TEXT NULL;";
                 await alterCmd.ExecuteNonQueryAsync();
             }
 

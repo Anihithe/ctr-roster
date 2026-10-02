@@ -101,13 +101,24 @@ public class SessionLifecycleWorker(
                 continue;
             }
 
-            int intervalDays = guildConfig?.RenewIntervalDays ?? 7;
-            var nextDate = session.ScheduledDate.AddDays(intervalDays);
+            TimeSpan interval = guildConfig?.GetRenewInterval() ?? TimeSpan.FromDays(7);
+            var nextDate = session.ScheduledDate.Add(interval);
 
             // Sécurité : si le bot a été éteint longtemps, avancer jusqu'à une date future
             while (nextDate <= now)
             {
-                nextDate = nextDate.AddDays(intervalDays);
+                nextDate = nextDate.Add(interval);
+            }
+
+            // Respect des jours d'ouverture : avancer jusqu'au prochain jour d'ouverture si fermé
+            if (guildConfig != null)
+            {
+                int safety = 0;
+                while (!guildConfig.IsDayOpen(nextDate.DayOfWeek) && safety < 14)
+                {
+                    nextDate = nextDate.AddDays(1);
+                    safety++;
+                }
             }
 
             logger.LogInformation("📅 Création automatique de la session suivante pour le {Date:dddd dd MMMM yyyy à HH:mm} sur <#{ChannelId}>...",

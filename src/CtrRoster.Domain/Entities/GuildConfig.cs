@@ -36,7 +36,67 @@ public class GuildConfig
     public int RenewIntervalDays { get; set; } = 7;
 
     /// <summary>
+    /// Intervalle de renouvellement en heures (optionnel, prioritaire sur RenewIntervalDays si renseigné).
+    /// </summary>
+    public int? RenewIntervalHours { get; set; }
+
+    /// <summary>
     /// Nombre maximum de tables par défaut pour les sessions de ce serveur (null = illimité).
     /// </summary>
     public int? DefaultMaxTables { get; set; }
+
+    /// <summary>
+    /// Jours d'ouverture autorisés sous forme JSON (ex: ["Monday", "Friday", ...]).
+    /// Si null ou vide, tous les jours sont considérés comme ouverts.
+    /// </summary>
+    public string? OpenDaysJson { get; set; }
+
+    public TimeSpan GetRenewInterval()
+    {
+        if (RenewIntervalHours.HasValue && RenewIntervalHours.Value > 0)
+        {
+            return TimeSpan.FromHours(RenewIntervalHours.Value);
+        }
+        return TimeSpan.FromDays(RenewIntervalDays > 0 ? RenewIntervalDays : 7);
+    }
+
+    public List<DayOfWeek> GetOpenDays()
+    {
+        if (string.IsNullOrWhiteSpace(OpenDaysJson))
+        {
+            return GetAllDays();
+        }
+
+        try
+        {
+            var days = System.Text.Json.JsonSerializer.Deserialize<List<string>>(OpenDaysJson);
+            if (days == null || days.Count == 0) return GetAllDays();
+
+            var result = new List<DayOfWeek>();
+            foreach (var d in days)
+            {
+                if (Enum.TryParse<DayOfWeek>(d, true, out var parsedDay) && !result.Contains(parsedDay))
+                {
+                    result.Add(parsedDay);
+                }
+            }
+            return result.Count > 0 ? result : GetAllDays();
+        }
+        catch
+        {
+            return GetAllDays();
+        }
+    }
+
+    public bool IsDayOpen(DayOfWeek day) => GetOpenDays().Contains(day);
+
+    private static List<DayOfWeek> GetAllDays() => [
+        DayOfWeek.Monday,
+        DayOfWeek.Tuesday,
+        DayOfWeek.Wednesday,
+        DayOfWeek.Thursday,
+        DayOfWeek.Friday,
+        DayOfWeek.Saturday,
+        DayOfWeek.Sunday
+    ];
 }
