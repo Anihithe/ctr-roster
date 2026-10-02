@@ -83,17 +83,22 @@ public static class DatabaseInitializationHelper
                 await alterCmd.ExecuteNonQueryAsync();
             }
 
-            // 3. Vérifier si AllowedChannelId existe sur GuildConfigs
+            // 3. Vérifier si AllowedChannelId et DefaultMaxTables existent sur GuildConfigs
             cmd.CommandText = "PRAGMA table_info(GuildConfigs);";
             var hasAllowedChannel = false;
+            var hasDefaultMaxTables = false;
             using (var reader = await cmd.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
                 {
-                    if (reader.GetString(1).Equals("AllowedChannelId", StringComparison.OrdinalIgnoreCase))
+                    var colName = reader.GetString(1);
+                    if (colName.Equals("AllowedChannelId", StringComparison.OrdinalIgnoreCase))
                     {
                         hasAllowedChannel = true;
-                        break;
+                    }
+                    else if (colName.Equals("DefaultMaxTables", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasDefaultMaxTables = true;
                     }
                 }
             }
@@ -103,6 +108,37 @@ public static class DatabaseInitializationHelper
                 logger.LogInformation("Migration schéma SQLite : Ajout de la colonne AllowedChannelId sur la table GuildConfigs.");
                 using var alterCmd = connection.CreateCommand();
                 alterCmd.CommandText = "ALTER TABLE GuildConfigs ADD COLUMN AllowedChannelId INTEGER NULL;";
+                await alterCmd.ExecuteNonQueryAsync();
+            }
+
+            if (!hasDefaultMaxTables)
+            {
+                logger.LogInformation("Migration schéma SQLite : Ajout de la colonne DefaultMaxTables sur la table GuildConfigs.");
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE GuildConfigs ADD COLUMN DefaultMaxTables INTEGER NULL;";
+                await alterCmd.ExecuteNonQueryAsync();
+            }
+
+            // 4. Vérifier si MaxTables existe sur GameSessions
+            cmd.CommandText = "PRAGMA table_info(GameSessions);";
+            var hasMaxTables = false;
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    if (reader.GetString(1).Equals("MaxTables", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasMaxTables = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasMaxTables)
+            {
+                logger.LogInformation("Migration schéma SQLite : Ajout de la colonne MaxTables sur la table GameSessions.");
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE GameSessions ADD COLUMN MaxTables INTEGER NULL;";
                 await alterCmd.ExecuteNonQueryAsync();
             }
         }

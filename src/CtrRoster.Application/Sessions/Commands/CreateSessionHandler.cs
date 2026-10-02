@@ -11,6 +11,7 @@ public class CreateSessionHandler(IAppDbContext db)
         DateTime scheduledDate,
         ulong channelId,
         ulong guildId = 0,
+        int? maxTables = null,
         CancellationToken ct = default)
     {
         // Règle métier : Clôturer automatiquement les sessions précédentes encore ouvertes sur ce canal
@@ -23,11 +24,20 @@ public class CreateSessionHandler(IAppDbContext db)
             oldSession.Status = SessionStatus.Closed;
         }
 
+        // Si maxTables n'est pas spécifié, hériter de la capacité par défaut du serveur
+        int? effectiveMaxTables = maxTables;
+        if (!effectiveMaxTables.HasValue && guildId != 0)
+        {
+            var config = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == guildId, ct);
+            effectiveMaxTables = config?.DefaultMaxTables;
+        }
+
         var newSession = new GameSession
         {
             ScheduledDate = scheduledDate,
             DiscordChannelId = channelId,
             GuildId = guildId,
+            MaxTables = effectiveMaxTables,
             Status = SessionStatus.Open,
             CreatedAtUtc = DateTime.UtcNow
         };

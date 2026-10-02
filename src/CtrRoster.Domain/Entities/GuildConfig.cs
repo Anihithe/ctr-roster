@@ -34,4 +34,9 @@ public class GuildConfig
     /// Nombre de jours d'intervalle pour le renouvellement automatique (7 par défaut).
     /// </summary>
     public int RenewIntervalDays { get; set; } = 7;
+
+    /// <summary>
+    /// Nombre maximum de tables par défaut pour les sessions de ce serveur (null = illimité).
+    /// </summary>
+    public int? DefaultMaxTables { get; set; }
 }

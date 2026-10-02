@@ -37,12 +37,16 @@ public class UserSlashCommands(IAppDbContext db) : InteractionModuleBase<SocketI
             return;
         }
 
+        var tablesCountStr = session.MaxTables.HasValue
+            ? $"{session.Tables.Count}/{session.MaxTables.Value} table(s)"
+            : $"{session.Tables.Count} table(s)";
+
         var embed = new EmbedBuilder()
             .WithTitle("🎲 Information Session CTR-Roster")
             .WithColor(Color.Green)
             .WithDescription($"Session prévue pour le **{session.ScheduledDate:dddd dd MMMM yyyy à HH:mm}**.")
             .AddField("Statut", "🟢 Inscriptions ouvertes", inline: true)
-            .AddField("Tables formées", $"{session.Tables.Count} table(s)", inline: true)
+            .AddField("Tables formées", tablesCountStr, inline: true)
             .AddField("Disponibilités", $"{session.Availabilities.Count(a => !a.IsAbsent)} joueur(s) en attente", inline: true)
             .Build();
 

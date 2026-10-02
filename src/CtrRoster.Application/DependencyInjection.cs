@@ -23,6 +23,7 @@ public static class DependencyInjection
 
         // Sessions
         services.AddScoped<CreateSessionHandler>();
+        services.AddScoped<SetSessionCapacityHandler>();
 
         // Games
         services.AddScoped<AddGameHandler>();

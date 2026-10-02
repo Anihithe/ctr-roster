@@ -237,6 +237,18 @@ public class InteractionRouter(
         switch (action)
         {
             case "create":
+                // Vérifier d'abord la capacité maximale de la session
+                using (var scopeCheck = scopeFactory.CreateScope())
+                {
+                    var dbCheck = scopeCheck.ServiceProvider.GetRequiredService<IAppDbContext>();
+                    var sessCheck = await dbCheck.GameSessions.Include(s => s.Tables).FirstOrDefaultAsync(s => s.Id == sessionId);
+                    if (sessCheck != null && sessCheck.MaxTables.HasValue && sessCheck.Tables.Count >= sessCheck.MaxTables.Value)
+                    {
+                        await component.RespondAsync($"⚠️ La capacité maximale de cette session est atteinte ({sessCheck.MaxTables.Value} table{(sessCheck.MaxTables.Value > 1 ? "s" : "")} max). Impossible de créer une nouvelle table.", ephemeral: true);
+                        return;
+                    }
+                }
+
                 // Si l'utilisateur clique sur le bouton "custom" de création libre
                 if (args.Length > 0 && args[0] == "custom")
                 {

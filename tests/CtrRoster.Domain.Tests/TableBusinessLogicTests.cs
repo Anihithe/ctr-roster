@@ -1,4 +1,5 @@
 using CtrRoster.Application.Availabilities.Commands;
+using CtrRoster.Application.Sessions.Commands;
 using CtrRoster.Application.Tables.Commands;
 using CtrRoster.Domain.Entities;
 using CtrRoster.Domain.Enums;
@@ -306,6 +307,117 @@ public class TableBusinessLogicTests : IDisposable
         Assert.False(avail.IsAbsent);
         Assert.Contains("Warhammer 40k", avail.PreferredGamesJson);
         Assert.Contains("Catan", avail.PreferredGamesJson);
+    }
+
+    [Fact]
+    public async Task CreateTable_WhenUnderMaxCapacity_Succeeds()
+    {
+        using var db = new AppDbContext(_options);
+        var session = new GameSession
+        {
+            ScheduledDate = DateTime.UtcNow.AddDays(3),
+            DiscordChannelId = 111,
+            DiscordMessageId = 222,
+            Status = SessionStatus.Open,
+            MaxTables = 2
+        };
+        db.GameSessions.Add(session);
+        await db.SaveChangesAsync();
+
+        var handler = new CreateTableHandler(db, _renderer);
+
+        // Table 1
+        var result1 = await handler.HandleAsync(
+            session.Id,
+            creatorUserId: 1001,
+            creatorUsername: "Player1",
+            gameName: "Catan",
+            gameId: null,
+            creatorRole: ParticipantRole.Player,
+            additionalParticipants: [new ParticipantDto(1002, "Player2", ParticipantRole.Player)]);
+
+        Assert.NotNull(result1.Table);
+        Assert.Single(db.GameTables);
+    }
+
+    [Fact]
+    public async Task CreateTable_WhenMaxCapacityReached_ThrowsDomainException()
+    {
+        using var db = new AppDbContext(_options);
+        var session = new GameSession
+        {
+            ScheduledDate = DateTime.UtcNow.AddDays(3),
+            DiscordChannelId = 111,
+            DiscordMessageId = 222,
+            Status = SessionStatus.Open,
+            MaxTables = 1
+        };
+        db.GameSessions.Add(session);
+        await db.SaveChangesAsync();
+
+        var handler = new CreateTableHandler(db, _renderer);
+
+        // Première table : atteint la limite de 1
+        await handler.HandleAsync(
+            session.Id,
+            creatorUserId: 1001,
+            creatorUsername: "Player1",
+            gameName: "Catan",
+            gameId: null,
+            creatorRole: ParticipantRole.Player,
+            additionalParticipants: [new ParticipantDto(1002, "Player2", ParticipantRole.Player)]);
+
+        // Deuxième table : doit échouer
+        var ex = await Assert.ThrowsAsync<DomainException>(() => handler.HandleAsync(
+            session.Id,
+            creatorUserId: 2001,
+            creatorUsername: "Player3",
+            gameName: "Root",
+            gameId: null,
+            creatorRole: ParticipantRole.Player,
+            additionalParticipants: [new ParticipantDto(2002, "Player4", ParticipantRole.Player)]));
+
+        Assert.Contains("capacité maximale", ex.Message);
+    }
+
+    [Fact]
+    public async Task SetSessionCapacity_UpdatesMaxTablesAndQueuesUpdate()
+    {
+        using var db = new AppDbContext(_options);
+        var session = new GameSession
+        {
+            ScheduledDate = DateTime.UtcNow.AddDays(3),
+            DiscordChannelId = 111,
+            DiscordMessageId = 222,
+            Status = SessionStatus.Open,
+            MaxTables = 2
+        };
+        db.GameSessions.Add(session);
+        await db.SaveChangesAsync();
+
+        var handler = new SetSessionCapacityHandler(db, _renderer);
+        var updated = await handler.HandleAsync(session.Id, 5);
+
+        Assert.Equal(5, updated.MaxTables);
+        Assert.Contains(session.Id, _renderer.QueuedSessionIds);
+    }
+
+    [Fact]
+    public async Task CreateSession_InheritsDefaultMaxTablesFromGuildConfig()
+    {
+        using var db = new AppDbContext(_options);
+        var guildConfig = new GuildConfig
+        {
+            GuildId = 999,
+            DefaultMaxTables = 4
+        };
+        db.GuildConfigs.Add(guildConfig);
+        await db.SaveChangesAsync();
+
+        var handler = new CtrRoster.Application.Sessions.Commands.CreateSessionHandler(db);
+        var session = await handler.HandleAsync(DateTime.UtcNow.AddDays(4), 12345, 999);
+
+        Assert.Equal(4, session.MaxTables);
     }
 
     public void Dispose()

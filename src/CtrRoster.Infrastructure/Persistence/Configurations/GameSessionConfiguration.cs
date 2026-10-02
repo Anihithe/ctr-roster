@@ -29,6 +29,9 @@ public class GameSessionConfiguration : IEntityTypeConfiguration<GameSession>
             .IsRequired()
             .HasConversion<int>();
 
+        builder.Property(s => s.MaxTables)
+            .IsRequired(false);
+
         builder.HasIndex(s => new { s.GuildId, s.Status });
         builder.HasIndex(s => s.Status);
         builder.HasIndex(s => s.ScheduledDate);
