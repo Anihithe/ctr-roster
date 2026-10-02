@@ -1,4 +1,4 @@
-# Configuration Docker Compose pour le déploiement sur Raspberry Pi (Production)
+# Configuration Docker Compose pour le déploiement sur Raspberry Pi (Production & Dev)
 version: '3.8'
 
 services:
@@ -6,14 +6,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ctr_roster_bot
-    restart: unless-stopped
+    container_name: ${CONTAINER_NAME:-ctr_roster_bot}
+    restart: ${RESTART_POLICY:-unless-stopped}
     environment:
       - DOTNET_ENVIRONMENT=${DOTNET_ENVIRONMENT:-Production}
-      - Discord__Token=${DISCORD_PROD_TOKEN}
+      - Discord__Token=${DISCORD_BOT_TOKEN:-${DISCORD_PROD_TOKEN}}
+      - Discord__DevGuildId=${DISCORD_DEV_GUILD_ID:-0}
       - Discord__AdminRoleId=${DISCORD_ADMIN_ROLE_ID:-0}
       - Discord__AdminUserId=${DISCORD_ADMIN_USER_ID:-0}
-      - ConnectionStrings__Default=Data Source=/app/data/ctr_roster.db;Cache=Shared
+      - ConnectionStrings__Default=Data Source=/app/data/${SQLITE_DB_NAME:-ctr_roster.db};Cache=Shared
     volumes:
       - ./data:/app/data
     logging:

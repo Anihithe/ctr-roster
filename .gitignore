@@ -17,6 +17,8 @@ appsettings.*.json
 *.env
 *.local
 .env.*
+!.env.example
+!.env.*.example
 docker-compose.override.yml
 
 # SQLite Local Database
