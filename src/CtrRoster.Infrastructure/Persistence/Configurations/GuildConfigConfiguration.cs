@@ -28,7 +28,13 @@ public class GuildConfigConfiguration : IEntityTypeConfiguration<GuildConfig>
         builder.Property(c => c.RenewIntervalDays)
             .IsRequired();
 
+        builder.Property(c => c.RenewIntervalHours)
+            .IsRequired(false);
+
         builder.Property(c => c.DefaultMaxTables)
+            .IsRequired(false);
+
+        builder.Property(c => c.OpenDaysJson)
             .IsRequired(false);
     }
 }
