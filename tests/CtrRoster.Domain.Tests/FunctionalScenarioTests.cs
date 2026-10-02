@@ -305,4 +305,136 @@ public class FunctionalScenarioTests : IDisposable
         var t3 = await tableHandler.HandleAsync(session.Id, 305, "Player5", "Game 5", null, ParticipantRole.Player, []);
         Assert.NotNull(t3.Table);
     }
+
+    [Fact]
+    public async Task MultiGuildIsolationAndPermissions_ShouldEnforceStrictBoundaries()
+    {
+        using var db = new AppDbContext(_options);
+
+        // Configuration Guilde A : Club Wargame
+        const ulong guildAId = 11111;
+        const ulong channelAId = 22221;
+        const ulong adminRoleA = 33331;
+
+        var configA = new GuildConfig
+        {
+            GuildId = guildAId,
+            DefaultChannelId = channelAId,
+            AdminRoleId = adminRoleA,
+            DefaultMaxTables = 4
+        };
+
+        // Configuration Guilde B : Boutique Jeux de société
+        const ulong guildBId = 11112;
+        const ulong channelBId = 22222;
+        const ulong adminRoleB = 33332;
+
+        var configB = new GuildConfig
+        {
+            GuildId = guildBId,
+            DefaultChannelId = channelBId,
+            AdminRoleId = adminRoleB,
+            DefaultMaxTables = 1
+        };
+
+        db.GuildConfigs.AddRange(configA, configB);
+
+        // Catalogues de jeux distincts
+        var gameA1 = new Game { GuildId = guildAId, Name = "Warhammer 40k", IsActive = true };
+        var gameA2 = new Game { GuildId = guildAId, Name = "Kill Team", IsActive = false }; // Désactivé
+        var gameB1 = new Game { GuildId = guildBId, Name = "Blood Bowl", IsActive = true };
+
+        db.Games.AddRange(gameA1, gameA2, gameB1);
+        await db.SaveChangesAsync();
+
+        // 1. Isolation des requêtes catalogue
+        var gamesForA = await db.Games
+            .Where(g => (g.GuildId == guildAId || g.GuildId == 0) && g.IsActive)
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+
+        var gamesForB = await db.Games
+            .Where(g => (g.GuildId == guildBId || g.GuildId == 0) && g.IsActive)
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+
+        Assert.Single(gamesForA);
+        Assert.Equal("Warhammer 40k", gamesForA[0].Name);
+
+        Assert.Single(gamesForB);
+        Assert.Equal("Blood Bowl", gamesForB[0].Name);
+
+        // 2. Création de sessions sur chaque serveur
+        var sessionHandler = new CreateSessionHandler(db);
+        var sessionDate = new DateTime(2026, 10, 30, 20, 0, 0, DateTimeKind.Utc);
+
+        var sessionA = await sessionHandler.HandleAsync(sessionDate, channelAId, guildAId);
+        var sessionB = await sessionHandler.HandleAsync(sessionDate, channelBId, guildBId);
+
+        Assert.Equal(4, sessionA.MaxTables);
+        Assert.Equal(1, sessionB.MaxTables);
+
+        // 3. Quota indépendant sur Guilde B
+        var tableHandler = new CreateTableHandler(db, _renderer);
+        var tableB = await tableHandler.HandleAsync(sessionB.Id, 901, "PlayerB1", "Blood Bowl", gameB1.Id, ParticipantRole.Player, []);
+        Assert.NotNull(tableB.Table);
+
+        // Tentative d'une deuxième table sur Guilde B -> bloquée car max 1
+        await Assert.ThrowsAsync<DomainException>(() =>
+            tableHandler.HandleAsync(sessionB.Id, 902, "PlayerB2", "Autre Jeu", null, ParticipantRole.Player, []));
+
+        // Pendant ce temps, Guilde A peut créer plusieurs tables sans être impactée par Guilde B
+        var tableA1 = await tableHandler.HandleAsync(sessionA.Id, 801, "PlayerA1", "Warhammer 40k", gameA1.Id, ParticipantRole.Player, []);
+        var tableA2 = await tableHandler.HandleAsync(sessionA.Id, 802, "PlayerA2", "Autre Wargame", null, ParticipantRole.Player, []);
+        Assert.NotNull(tableA1.Table);
+        Assert.NotNull(tableA2.Table);
+
+        // 4. Gouvernance et dissolution :
+        // Un utilisateur non créateur et non admin de la session ne peut pas dissoudre
+        var dissolveHandler = new DissolveTableHandler(db, _renderer);
+        await Assert.ThrowsAsync<DomainException>(() =>
+            dissolveHandler.HandleAsync(tableA1.Table.Id, requestedByUserId: 9999, isAdmin: false));
+
+        // L'admin de la session peut dissoudre
+        var dissolveResult = await dissolveHandler.HandleAsync(tableA1.Table.Id, requestedByUserId: 8888, isAdmin: true);
+        Assert.Contains("dissoute", dissolveResult);
+    }
+
+    [Fact]
+    public async Task Concurrency_SequentialRapidJoins_ShouldMaintainIntegrityAndNoDuplicateParticipants()
+    {
+        using var db = new AppDbContext(_options);
+
+        var sessionHandler = new CreateSessionHandler(db);
+        var date = new DateTime(2026, 11, 6, 20, 0, 0, DateTimeKind.Utc);
+        var session = await sessionHandler.HandleAsync(date, channelId: 1000, guildId: 500);
+
+        var tableHandler = new CreateTableHandler(db, _renderer);
+        var created = await tableHandler.HandleAsync(session.Id, 1, "Host", "King of Tokyo", null, ParticipantRole.Player, []);
+        var tableId = created.Table.Id;
+
+        // 10 joueurs rejoignent successivement de manière rapprochée
+        var joinHandler = new JoinTableHandler(db, _renderer);
+        for (ulong i = 2; i <= 10; i++)
+        {
+            await joinHandler.HandleAsync(tableId, userId: i, username: $"Player_{i}", role: ParticipantRole.Player);
+        }
+
+        var table = await db.GameTables.Include(t => t.Participants).FirstAsync(t => t.Id == tableId);
+        Assert.Equal(10, table.Participants.Count);
+        Assert.Equal(10, table.Participants.Select(p => p.DiscordUserId).Distinct().Count()); // Aucun doublon
+
+        // Le joueur 5 tente de rejoindre à nouveau la même table avec le même rôle -> Rejeté avec DomainException
+        await Assert.ThrowsAsync<DomainException>(() =>
+            joinHandler.HandleAsync(tableId, userId: 5, username: "Player_5", role: ParticipantRole.Player));
+
+        var tableAfterDuplicateJoin = await db.GameTables.Include(t => t.Participants).FirstAsync(t => t.Id == tableId);
+        Assert.Equal(10, tableAfterDuplicateJoin.Participants.Count);
+
+        // Le joueur 5 change son rôle en Spectateur -> Mise à jour réussie sans doublon
+        await joinHandler.HandleAsync(tableId, userId: 5, username: "Player_5", role: ParticipantRole.Spectator);
+        var tableAfterRoleChange = await db.GameTables.Include(t => t.Participants).FirstAsync(t => t.Id == tableId);
+        Assert.Equal(10, tableAfterRoleChange.Participants.Count);
+        Assert.Equal(ParticipantRole.Spectator, tableAfterRoleChange.Participants.First(p => p.DiscordUserId == 5).Role);
+    }
 }
