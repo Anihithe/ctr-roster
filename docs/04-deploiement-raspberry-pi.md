@@ -53,47 +53,96 @@ ENTRYPOINT ["dotnet", "CtrRoster.Presentation.dll"]
 
 ---
 
-## 3. Déploiement via Docker Compose
+## 3. Architecture Multi-Instances : Production (PRD) & Développement (DEV)
 
-Arborescence sur le Raspberry Pi (`/opt/ctr-roster/`) :
+Pour isoler hermétiquement la production réelle et permettre des tests occasionnels sans impacter les joueurs, le Raspberry Pi héberge **deux répertoires et deux conteneurs Docker indépendants** :
+
 ```text
-/opt/ctr-roster/
-├── docker-compose.yml
-├── backup.sh
-└── data/
-    └── (ctr_roster.db généré ici)
+/opt/
+├── ctr-roster/          <-- Instance de PRODUCTION (active 24/7, branchée sur 'main' ou tag stable)
+│   ├── docker-compose.yml
+│   ├── .env             (Token du bot de PROD)
+│   └── data/
+│       └── ctr_roster.db (Vraie base SQLite de production)
+│
+└── ctr-roster-dev/      <-- Instance de DÉVELOPPEMENT (à la demande, branchée sur branche de test)
+    ├── docker-compose.yml
+    ├── .env             (Token du bot de DEV)
+    └── data/
+        └── ctr_roster_dev.db (Base SQLite de test isolée)
 ```
 
-Fichier `docker-compose.yml` :
-```yaml
-version: '3.8'
+### 3.1. Avantages de cette architecture
+1. **Zéro conflit réseau** : Les bots Discord fonctionnent en WebSocket sortant (aucun port d'écoute TCP exposé sur la machine). Les deux bots peuvent donc tourner en simultané sans aucun conflit.
+2. **Indépendance des branches Git** : Vous pouvez faire `git checkout feature/nom-de-branche` dans `/opt/ctr-roster-dev/` sans risquer de perturber le code source de la production.
+3. **Consommation mémoire minimale** : Le conteneur de DEV est configuré avec `RESTART_POLICY=no` (ne démarre pas au reboot). Il ne consomme de la mémoire que lorsqu'il est allumé pour vos tests.
 
-services:
-  ctr-roster:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ctr_roster_bot
-    restart: unless-stopped
-    environment:
-      - DOTNET_ENVIRONMENT=Production
-      - Discord__Token=VOTRE_TOKEN_BOT_PROD
-      - Discord__AdminRoleId=VOTRE_ROLE_ID_ADMIN
-      - ConnectionStrings__Default=Data Source=/app/data/ctr_roster.db;Cache=Shared
-    volumes:
-      - ./data:/app/data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+---
+
+### 3.2. Procédure de Mise en Place Initiale sur le Raspberry Pi
+
+#### Étape 1 : Préparer l'instance de PRODUCTION (`/opt/ctr-roster/`)
+```bash
+cd /opt/ctr-roster
+
+# Récupérer les nouveautés du dépôt
+git fetch --tags
+git checkout v0.3.0-beta
+
+# Créer le fichier .env de Production à partir du modèle
+cp .env.prod.example .env
+
+# Éditer .env et renseigner votre token Discord de PROD
+nano .env # (DISCORD_BOT_TOKEN=...)
+
+# Démarrer le conteneur de production
+docker compose up -d --build
+
+# Vérifier les logs
+docker compose logs -f --tail=50
+```
+
+#### Étape 2 : Préparer l'instance de DÉVELOPPEMENT (`/opt/ctr-roster-dev/`)
+```bash
+# Cloner le dépôt dans le dossier de DEV
+cd /opt
+sudo git clone https://github.com/Anihithe/ctr-roster.git ctr-roster-dev
+sudo chown -R $USER:$USER /opt/ctr-roster-dev
+
+cd /opt/ctr-roster-dev
+
+# Créer le fichier .env de Dev à partir du modèle
+cp .env.dev.example .env
+
+# Éditer .env et renseigner votre token Discord de DEV
+nano .env # (DISCORD_BOT_TOKEN=...)
+
+# Optionnel : démarrer la dev pour tester
+docker compose up -d --build
 ```
 
 ---
 
-## 4. Sauvegardes Quotidiennes SQLite (Protection Carte SD)
+## 4. Exploitation Quotidienne : Démarrer et Arrêter la DEV
 
-Pour éviter toute corruption SQLite en cas de coupure de courant ou d'usure de la carte SD, un backup à chaud non bloquant compatible WAL est exécuté chaque nuit.
+```bash
+cd /opt/ctr-roster-dev
+
+# Allumer le bot de DEV pour faire vos tests :
+docker compose up -d
+
+# Suivre les logs en direct :
+docker compose logs -f --tail=50
+
+# Éteindre le bot de DEV dès la fin des tests (libère 100% de la RAM) :
+docker compose stop
+```
+
+---
+
+## 5. Sauvegardes Quotidiennes SQLite (Production)
+
+Pour éviter toute corruption SQLite en cas de coupure de courant ou d'usure de la carte SD, un backup à chaud non bloquant compatible WAL est exécuté chaque nuit sur la base de production.
 
 Fichier `backup.sh` :
 ```bash
@@ -105,22 +154,14 @@ DATE=$(date +"%Y%m%d_%H%M%S")
 mkdir -p "$BACKUP_DIR"
 
 # Sauvegarde à chaud transactionnelle via sqlite3 CLI
-sqlite3 "$DB_FILE" ".backup '$BACKUP_DIR/ctr_roster_$DATE.db'"
-
-# Rétention : suppression des sauvegardes de plus de 14 jours
-find "$BACKUP_DIR" -name "ctr_roster_*.db" -mtime +14 -delete
+if [ -f "$DB_FILE" ]; then
+    sqlite3 "$DB_FILE" ".backup '$BACKUP_DIR/ctr_roster_$DATE.db'"
+    find "$BACKUP_DIR" -name "ctr_roster_*.db" -mtime +14 -delete
+fi
 ```
 
 Automatisation dans crontab de l'hôte :
 ```bash
-chmod +x /opt/ctr-roster/backup.sh
-(crontab -l 2>/dev/null; echo "0 3 * * * /opt/ctr-roster/backup.sh") | crontab -
+chmod +x /opt/ctr-roster/scripts/backup.sh
+(crontab -l 2>/dev/null; echo "0 3 * * * /opt/ctr-roster/scripts/backup.sh") | crontab -
 ```
-
----
-
-## 5. Commandes d'Exploitation
-
-- Démarrer / Mettre à jour : `docker compose up -d --build`
-- Voir les logs en direct : `docker compose logs -f --tail=100`
-- Arrêter le conteneur : `docker compose down`
