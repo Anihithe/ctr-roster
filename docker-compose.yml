@@ -10,7 +10,7 @@ services:
     restart: ${RESTART_POLICY:-unless-stopped}
     environment:
       - DOTNET_ENVIRONMENT=${DOTNET_ENVIRONMENT:-Production}
-      - Discord__Token=${DISCORD_BOT_TOKEN:-${DISCORD_PROD_TOKEN}}
+      - Discord__Token=${DISCORD_BOT_TOKEN}
       - Discord__DevGuildId=${DISCORD_DEV_GUILD_ID:-0}
       - Discord__AdminRoleId=${DISCORD_ADMIN_ROLE_ID:-0}
       - Discord__AdminUserId=${DISCORD_ADMIN_USER_ID:-0}
