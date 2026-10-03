@@ -221,7 +221,7 @@ public class CtrAdminSlashCommands(
 
         var currentChannelStr = guildConfig.DefaultChannelId.HasValue && guildConfig.DefaultChannelId.Value != 0
             ? $"<#{guildConfig.DefaultChannelId.Value}>"
-            : (config.GetValue<ulong>("Discord:DefaultChannelId") != 0 ? $"<#{config.GetValue<ulong>("Discord:DefaultChannelId")}> *(config globale)*" : "Non configuré");
+            : "Non configuré";
 
         var allowedChannelStr = guildConfig.AllowedChannelId.HasValue && guildConfig.AllowedChannelId.Value != 0
             ? $"<#{guildConfig.AllowedChannelId.Value}>"
@@ -229,7 +229,7 @@ public class CtrAdminSlashCommands(
 
         var currentRoleStr = guildConfig.AdminRoleId.HasValue && guildConfig.AdminRoleId.Value != 0
             ? $"<@&{guildConfig.AdminRoleId.Value}>"
-            : (config.GetValue<ulong>("Discord:AdminRoleId") != 0 ? $"<@&{config.GetValue<ulong>("Discord:AdminRoleId")}> *(config globale)*" : "Non configuré (Admins Discord)");
+            : "Non configuré (Admins Discord)";
 
         string renewIntervalDesc = guildConfig.RenewIntervalHours.HasValue
             ? $"{guildConfig.RenewIntervalHours.Value} heure(s)"
@@ -289,7 +289,7 @@ public class CtrAdminSlashCommands(
         if (channel == null)
         {
             var guildConfig = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == Context.Guild.Id);
-            var defaultChannelId = guildConfig?.DefaultChannelId ?? config.GetValue<ulong>("Discord:DefaultChannelId");
+            var defaultChannelId = (guildConfig?.DefaultChannelId.HasValue == true && guildConfig.DefaultChannelId.Value != 0) ? guildConfig.DefaultChannelId.Value : 0;
             if (defaultChannelId != 0)
             {
                 channel = Context.Guild.GetTextChannel(defaultChannelId);
