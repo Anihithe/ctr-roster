@@ -118,6 +118,7 @@ Le catalogue permet de proposer aux joueurs une liste déroulante claire lors de
 - **`/ctr-game-add nom:<Nom du jeu> [min_joueurs] [max_joueurs]`** : Ajoute un nouveau jeu (ex: `/ctr-game-add nom:Catan min_joueurs:3 max_joueurs:4`).
 - **`/ctr-game-toggle nom_jeu:<Nom>`** : Active ou désactive temporairement un jeu sans le supprimer de la base.
 - **`/ctr-game-remove nom:<Nom>`** : Supprime définitivement un jeu du catalogue.
+- **`/ctr-game-claim-legacy`** : Rattache l'ensemble des jeux historiques créés avant le multi-serveurs (`GuildId = 0`) au serveur Discord actuel.
 
 ---
 

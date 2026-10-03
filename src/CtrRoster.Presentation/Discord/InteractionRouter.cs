@@ -132,9 +132,18 @@ public class InteractionRouter(
                     await SyncSessionCardMessageAsync(db, sessionId, component);
 
                     var session = await db.GameSessions.FirstOrDefaultAsync(s => s.Id == sessionId);
-                    var guildId = session?.GuildId ?? (component.Channel as SocketGuildChannel)?.Guild.Id ?? 0;
+                    var guildId = (session != null && session.GuildId != 0)
+                        ? session.GuildId
+                        : ((component.Channel as SocketGuildChannel)?.Guild.Id ?? 0);
+
+                    if (session != null && session.GuildId == 0 && guildId != 0)
+                    {
+                        session.GuildId = guildId;
+                        await db.SaveChangesAsync();
+                    }
+
                     var activeGames = await db.Games
-                        .Where(g => g.IsActive && (g.GuildId == guildId || g.GuildId == 0))
+                        .Where(g => g.IsActive && g.GuildId == guildId)
                         .OrderBy(g => g.Name)
                         .ToListAsync();
 
@@ -281,9 +290,18 @@ public class InteractionRouter(
                     await SyncSessionCardMessageAsync(db, sessionId, component);
 
                     var session = await db.GameSessions.FirstOrDefaultAsync(s => s.Id == sessionId);
-                    var guildId = session?.GuildId ?? (component.Channel as SocketGuildChannel)?.Guild.Id ?? 0;
+                    var guildId = (session != null && session.GuildId != 0)
+                        ? session.GuildId
+                        : ((component.Channel as SocketGuildChannel)?.Guild.Id ?? 0);
+
+                    if (session != null && session.GuildId == 0 && guildId != 0)
+                    {
+                        session.GuildId = guildId;
+                        await db.SaveChangesAsync();
+                    }
+
                     var activeGames = await db.Games
-                        .Where(g => g.IsActive && (g.GuildId == guildId || g.GuildId == 0))
+                        .Where(g => g.IsActive && g.GuildId == guildId)
                         .OrderBy(g => g.Name)
                         .ToListAsync();
 
