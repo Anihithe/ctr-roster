@@ -75,7 +75,7 @@ public class GameCatalogTests : IDisposable
     }
 
     [Fact]
-    public async Task GetActiveGames_ShouldFilterByGuildId_AndIncludeLegacyGames()
+    public async Task GetActiveGames_ShouldFilterStrictlyByGuildId()
     {
         using var db = new AppDbContext(_options);
         var addHandler = new AddGameHandler(db);
@@ -89,15 +89,15 @@ public class GameCatalogTests : IDisposable
         var queryHandler = new GetActiveGamesHandler(db);
 
         var guild1Games = await queryHandler.HandleAsync(1001);
-        Assert.Equal(2, guild1Games.Count);
+        Assert.Single(guild1Games);
         Assert.Contains(guild1Games, g => g.Name == "Guild1 Game");
-        Assert.Contains(guild1Games, g => g.Name == "Global Legacy Game");
+        Assert.DoesNotContain(guild1Games, g => g.Name == "Global Legacy Game");
         Assert.DoesNotContain(guild1Games, g => g.Name == "Guild2 Game");
 
         var guild2Games = await queryHandler.HandleAsync(2002);
-        Assert.Equal(2, guild2Games.Count);
+        Assert.Single(guild2Games);
         Assert.Contains(guild2Games, g => g.Name == "Guild2 Game");
-        Assert.Contains(guild2Games, g => g.Name == "Global Legacy Game");
+        Assert.DoesNotContain(guild2Games, g => g.Name == "Global Legacy Game");
         Assert.DoesNotContain(guild2Games, g => g.Name == "Guild1 Game");
     }
 

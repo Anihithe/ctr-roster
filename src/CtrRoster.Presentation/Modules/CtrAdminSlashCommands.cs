@@ -621,7 +621,7 @@ public class CtrAdminSlashCommands(
 
         var guildId = Context.Guild.Id;
         var games = await db.Games
-            .Where(g => g.GuildId == guildId || g.GuildId == 0)
+            .Where(g => g.GuildId == guildId)
             .OrderBy(g => g.Name)
             .ToListAsync();
 
@@ -660,7 +660,7 @@ public class CtrAdminSlashCommands(
         }
 
         var guildId = Context.Guild.Id;
-        var game = await db.Games.FirstOrDefaultAsync(g => (g.GuildId == guildId || g.GuildId == 0) && g.Name.ToLower() == gameName.ToLower());
+        var game = await db.Games.FirstOrDefaultAsync(g => g.GuildId == guildId && g.Name.ToLower() == gameName.ToLower());
         if (game == null)
         {
             await FollowupAsync($"⚠️ Le jeu '{gameName}' est introuvable dans le catalogue.", ephemeral: true);
@@ -670,5 +670,33 @@ public class CtrAdminSlashCommands(
         var newState = await toggleGameActiveHandler.HandleAsync(guildId, game.Id);
         string stateStr = newState ? "activé" : "désactivé";
         await FollowupAsync($"✅ Le jeu **{game.Name}** a été {stateStr} du catalogue.", ephemeral: true);
+    }
+
+    [SlashCommand("ctr-game-claim-legacy", "Rattache tous les jeux du catalogue sans serveur (historiques) à ce serveur")]
+    public async Task ClaimLegacyGamesAsync()
+    {
+        await DeferAsync(ephemeral: true);
+
+        if (!await IsAdminAsync())
+        {
+            await FollowupAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            return;
+        }
+
+        var guildId = Context.Guild.Id;
+        var legacyGames = await db.Games.Where(g => g.GuildId == 0).ToListAsync();
+        if (legacyGames.Count == 0)
+        {
+            await FollowupAsync("ℹ️ Aucun jeu historique non rattaché (GuildId = 0) n'a été trouvé en base.", ephemeral: true);
+            return;
+        }
+
+        foreach (var g in legacyGames)
+        {
+            g.GuildId = guildId;
+        }
+        await db.SaveChangesAsync();
+
+        await FollowupAsync($"✅ **{legacyGames.Count} jeu(x) historique(s)** ont été rattachés avec succès à ce serveur (**{Context.Guild.Name}**) !", ephemeral: true);
     }
 }

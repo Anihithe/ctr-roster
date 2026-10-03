@@ -231,7 +231,7 @@ public class DiscordMessageRenderer(
             }
 
             componentBuilder.WithButton("Quitter ma table", $"table:leave:current:{session.Id}", ButtonStyle.Secondary, new Emoji("🚪"), row: 0);
-            componentBuilder.WithButton("Absent", $"session:absent:{session.Id}", ButtonStyle.Danger, new Emoji("❌"), row: 0);
+            componentBuilder.WithButton("Absent", $"session:absent:{session.Id}", ButtonStyle.Secondary, new Emoji("❌"), row: 0);
 
             // Ligne 2 : Menu déroulant pour rejoindre une table existante (si au moins 1 table existe)
             if (sortedTables.Count > 0)

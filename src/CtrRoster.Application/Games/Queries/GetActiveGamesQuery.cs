@@ -9,7 +9,7 @@ public class GetActiveGamesHandler(IAppDbContext db)
     public async Task<List<Game>> HandleAsync(ulong guildId, CancellationToken ct = default)
     {
         return await db.Games
-            .Where(g => (g.GuildId == guildId || g.GuildId == 0) && g.IsActive)
+            .Where(g => g.GuildId == guildId && g.IsActive)
             .OrderBy(g => g.Name)
             .ToListAsync(ct);
     }

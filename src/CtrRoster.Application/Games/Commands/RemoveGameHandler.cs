@@ -16,7 +16,7 @@ public class RemoveGameHandler(IAppDbContext db)
 
         string trimmedName = name.Trim();
         var game = await db.Games.FirstOrDefaultAsync(
-            g => (g.GuildId == guildId || g.GuildId == 0) && g.Name.ToLower() == trimmedName.ToLower(), ct);
+            g => g.GuildId == guildId && g.Name.ToLower() == trimmedName.ToLower(), ct);
 
         if (game == null)
         {
