@@ -79,8 +79,7 @@ La commande `/ctr-config` permet de personnaliser le fonctionnement du bot pour 
 | `reset_restriction_salon` | Supprime la restriction de salon (autorise tous les salons) | `true` |
 | `role_admin` | Rôle Discord habilité à gérer le bot | `@Responsable Jeux` |
 | `auto_renouvellement` | Active ou désactive la reconduction automatique des sessions | `true` ou `false` |
-| `intervalle_jours` | Fréquence de renouvellement en jours | `7` (hebdomadaire), `1` (quotidien) |
-| `intervalle_heures` | Fréquence de renouvellement en heures | `24` (toutes les 24h) |
+| `frequence` | Fréquence de renouvellement automatique (menu guidé) | `Hebdomadaire (tous les 7 jours)` ou `Quotidien (chaque jour ouvert)` |
 | `jours_ouverture` | Jours d'ouverture du local / magasin (séparés par virgules) | `mardi,mercredi,vendredi,samedi` |
 | `reset_jours_ouverture` | Réinitialise les jours d'ouverture (tous les jours ouverts) | `true` |
 | `max_tables_defaut` | Nombre maximum de tables par défaut dans la salle | `5` tables |

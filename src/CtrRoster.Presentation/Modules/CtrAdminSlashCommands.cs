@@ -15,6 +15,7 @@ using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using CtrRoster.Presentation.Enums;
 
 namespace CtrRoster.Presentation.Modules;
 
@@ -105,8 +106,7 @@ public class CtrAdminSlashCommands(
         [Summary("reset_max_tables", "Supprimer la limite de tables par défaut")] bool resetDefaultMaxTables = false,
         [Summary("jours_ouverture", "Jours d'ouverture séparés par virgules (ex: mardi,mercredi,jeudi,vendredi,samedi)")] string? openDays = null,
         [Summary("reset_jours_ouverture", "Réinitialiser les jours d'ouverture (tous les jours ouverts)")] bool resetOpenDays = false,
-        [Summary("intervalle_jours", "Intervalle de renouvellement en jours (ex: 7 pour hebdo, 1 pour quotidien)")] int? renewDays = null,
-        [Summary("intervalle_heures", "Intervalle de renouvellement en heures (ex: 24 pour journalier)")] int? renewHours = null)
+        [Summary("frequence", "Fréquence de renouvellement : Hebdomadaire (7 jours) ou Quotidien (chaque jour ouvert)")] RenewIntervalChoice? frequence = null)
     {
         await DeferAsync(ephemeral: true);
 
@@ -199,18 +199,10 @@ public class CtrAdminSlashCommands(
             hasChanges = true;
         }
 
-        if (renewDays.HasValue)
+        if (frequence.HasValue)
         {
-            if (renewDays.Value < 1)
-            {
-                await FollowupAsync("⚠️ L'intervalle en jours doit être au minimum de 1 jour.", ephemeral: true);
-                return;
-            }
-            guildConfig.RenewIntervalDays = renewDays.Value;
-            if (!renewHours.HasValue)
-            {
-                guildConfig.RenewIntervalHours = null;
-            }
+            guildConfig.RenewIntervalDays = (int)frequence.Value;
+            guildConfig.RenewIntervalHours = null;
             hasChanges = true;
         }
 
@@ -231,12 +223,17 @@ public class CtrAdminSlashCommands(
             ? $"<@&{guildConfig.AdminRoleId.Value}>"
             : "Non configuré (Admins Discord)";
 
-        string renewIntervalDesc = guildConfig.RenewIntervalHours.HasValue
-            ? $"{guildConfig.RenewIntervalHours.Value} heure(s)"
-            : $"{guildConfig.RenewIntervalDays} jour(s)";
+        string renewIntervalDesc = guildConfig.RenewIntervalDays == 1
+            ? "Quotidien (chaque jour ouvert)"
+            : "Hebdomadaire (tous les 7 jours)";
+
+        if (guildConfig.RenewIntervalHours.HasValue && guildConfig.RenewIntervalHours.Value > 0)
+        {
+            renewIntervalDesc = $"{guildConfig.RenewIntervalHours.Value} heure(s)";
+        }
 
         var renewStr = guildConfig.AutoRenewSessions
-            ? $"🟢 Activé (tous les {renewIntervalDesc} à échéance)"
+            ? $"🟢 Activé ({renewIntervalDesc} à échéance)"
             : "⚪ Désactivé";
 
         var openDaysStr = string.IsNullOrWhiteSpace(guildConfig.OpenDaysJson)
