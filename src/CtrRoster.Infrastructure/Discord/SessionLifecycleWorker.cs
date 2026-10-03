@@ -110,14 +110,29 @@ public class SessionLifecycleWorker(
                 nextDate = nextDate.Add(interval);
             }
 
-            // Respect des jours d'ouverture : avancer jusqu'au prochain jour d'ouverture si fermé
-            if (guildConfig != null)
+            // Respect des jours d'ouverture :
+            if (interval <= TimeSpan.FromDays(1))
             {
-                int safety = 0;
-                while (!guildConfig.IsDayOpen(nextDate.DayOfWeek) && safety < 14)
+                // Mode Quotidien (1 jour) : avancer jour par jour jusqu'au prochain jour d'ouverture
+                if (guildConfig != null)
                 {
-                    nextDate = nextDate.AddDays(1);
-                    safety++;
+                    int safety = 0;
+                    while (!guildConfig.IsDayOpen(nextDate.DayOfWeek) && safety < 7)
+                    {
+                        nextDate = nextDate.AddDays(1);
+                        safety++;
+                    }
+                }
+            }
+            else
+            {
+                // Mode Hebdomadaire (7 jours) : couloirs stricts par jour de la semaine.
+                // Si ce jour n'est plus ouvert (ex: fermeture structurelle du jour), arrêt propre sans déborder sur le jour suivant.
+                if (guildConfig != null && !guildConfig.IsDayOpen(nextDate.DayOfWeek))
+                {
+                    logger.LogInformation("Le jour {Day} n'est plus configuré comme jour d'ouverture pour le serveur {GuildId}. Arrêt du renouvellement automatique pour ce créneau.",
+                        nextDate.DayOfWeek, guildId);
+                    continue;
                 }
             }
 

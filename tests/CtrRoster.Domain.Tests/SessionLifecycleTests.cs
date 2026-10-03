@@ -91,4 +91,75 @@ public class SessionLifecycleTests : IDisposable
         Assert.Single(expiredSessions);
         Assert.Equal(pastSession.Id, expiredSessions[0].Id);
     }
+
+    [Fact]
+    public void DailyRenewal_ShouldAdvancePastClosedDays_ToNextOpenDay()
+    {
+        var config = new GuildConfig
+        {
+            OpenDaysJson = System.Text.Json.JsonSerializer.Serialize(new[] { "Tuesday", "Wednesday", "Friday" }),
+            RenewIntervalDays = 1
+        };
+
+        // Supposons une session du mercredi
+        var wednesday = new DateTime(2026, 10, 7, 20, 0, 0); // Mercredi 7 Octobre 2026
+        Assert.Equal(DayOfWeek.Wednesday, wednesday.DayOfWeek);
+
+        var interval = config.GetRenewInterval();
+        var nextDate = wednesday.Add(interval); // Jeudi 8 Octobre
+
+        if (interval <= TimeSpan.FromDays(1))
+        {
+            int safety = 0;
+            while (!config.IsDayOpen(nextDate.DayOfWeek) && safety < 7)
+            {
+                nextDate = nextDate.AddDays(1);
+                safety++;
+            }
+        }
+
+        // Le jeudi étant fermé, le mode quotidien doit avancer jusqu'au vendredi
+        Assert.Equal(DayOfWeek.Friday, nextDate.DayOfWeek);
+        Assert.Equal(new DateTime(2026, 10, 9, 20, 0, 0), nextDate);
+    }
+
+    [Fact]
+    public void WeeklyRenewal_ShouldNotAdvanceToNextDay_WhenDayOfWeekIsClosed()
+    {
+        var config = new GuildConfig
+        {
+            // Jeudi a été retiré des jours d'ouverture
+            OpenDaysJson = System.Text.Json.JsonSerializer.Serialize(new[] { "Tuesday", "Wednesday", "Friday", "Saturday" }),
+            RenewIntervalDays = 7
+        };
+
+        var thursday = new DateTime(2026, 10, 8, 20, 0, 0); // Jeudi 8 Octobre 2026
+        Assert.Equal(DayOfWeek.Thursday, thursday.DayOfWeek);
+
+        var interval = config.GetRenewInterval();
+        var nextDate = thursday.Add(interval); // Jeudi 15 Octobre (+7j)
+
+        bool shouldStopRenewal = false;
+        if (interval <= TimeSpan.FromDays(1))
+        {
+            int safety = 0;
+            while (!config.IsDayOpen(nextDate.DayOfWeek) && safety < 7)
+            {
+                nextDate = nextDate.AddDays(1);
+                safety++;
+            }
+        }
+        else
+        {
+            // En hebdomadaire, si le jour de la semaine est fermé, on stoppe sans déborder sur le vendredi
+            if (!config.IsDayOpen(nextDate.DayOfWeek))
+            {
+                shouldStopRenewal = true;
+            }
+        }
+
+        Assert.True(shouldStopRenewal);
+        // Le jour reste jeudi, pas de glissement vers vendredi
+        Assert.Equal(DayOfWeek.Thursday, nextDate.DayOfWeek);
+    }
 }
