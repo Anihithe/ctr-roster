@@ -3,6 +3,22 @@
 Toutes les modifications notables apportées à ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.3.2-beta] - 2026-10-03
+
+### 🎨 Améliorations Ergonomie & UI/UX
+- **Contraste du bouton "Absent"** :
+  - Remplacement du style `ButtonStyle.Danger` (rouge) par `ButtonStyle.Secondary` (gris anthracite Discord) pour le bouton "Absent" (`session:absent:{id}`).
+  - L'emoji croix rouge `❌` ressort désormais avec un contraste parfait et une excellente lisibilité sur tous les clients Discord.
+
+### 🛡️ Isolation Multi-Serveurs & Données
+- **Cloisonnement strict des catalogues de jeux (`GuildId`)** :
+  - Suppression définitive du reliquat historique `GuildId == 0` dans les requêtes de recherche, de liste (`/ctr-game-list`), d'activation (`/ctr-game-toggle`), de suppression et de sélecteurs d'inscription/création de table.
+  - Chaque serveur Discord ne voit et n'administre désormais **strictement que ses propres jeux**.
+- **Outil de rattachement des jeux historiques** :
+  - Nouvelle commande `/ctr-game-claim-legacy` réservée aux administrateurs pour réattribuer instantanément tous les jeux créés avant le cloisonnement multi-serveurs (`GuildId = 0`) au serveur Discord actuel.
+
+---
+
 ## [0.3.1-beta] - 2026-10-03
 
 ### 🐛 Corrections (Fixes)
