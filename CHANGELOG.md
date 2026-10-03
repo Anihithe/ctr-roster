@@ -3,6 +3,15 @@
 Toutes les modifications notables apportées à ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.3.3-beta] - 2026-10-03
+
+### 🧹 Nettoyage & Craftsmanship (Refactoring)
+- **Purge de l'outillage de migration temporaire** :
+  - Suppression définitive de la commande éphémère `/ctr-game-claim-legacy` suite à la migration des données historiques.
+  - La palette de commandes Discord reste 100% propre, sans commande technique résiduelle ni pollution pour les utilisateurs et administrateurs.
+
+---
+
 ## [0.3.2-beta] - 2026-10-03
 
 ### 🎨 Améliorations Ergonomie & UI/UX
