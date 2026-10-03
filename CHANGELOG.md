@@ -3,6 +3,20 @@
 Toutes les modifications notables apportées à ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.4.0-beta] - 2026-10-03
+
+### ✨ Nouvelles Fonctionnalités & Ergonomie (Features)
+- **Menu guidé pour la fréquence de renouvellement (`RenewIntervalChoice`)** :
+  - Remplacement de la saisie manuelle d'entiers (`intervalle_jours`, `intervalle_heures`) dans `/ctr-config` par un paramètre `frequence` basé sur un Enum Discord natif avec affichage assisté :
+    - 📅 `Hebdomadaire (tous les 7 jours)`
+    - ⏰ `Quotidien (chaque jour ouvert)`
+  - Élimine tout risque de coquille ou de valeur incohérente pour les utilisateurs.
+- **Sécurisation du cycle de vie des sessions (Daily vs Weekly)** :
+  - **Mode Quotidien (`Daily = 1`)** : navigation fluide jour par jour en sautant automatiquement les jours de fermeture (`safety < 7`) jusqu'au prochain jour ouvert.
+  - **Mode Hebdomadaire (`Weekly = 7`)** : étanchéité stricte des couloirs par jour de la semaine. Si un jour n'est plus ouvert (ex: fermeture saisonnière d'un jour précis), le bot stoppe proprement sa récurrence sans jamais déborder sur le jour suivant, éliminant les collisions et vols de créneaux.
+
+---
+
 ## [0.3.4-beta] - 2026-10-03
 
 ### 🔒 Sécurité & Étanchéité Multi-Serveurs (Data Isolation)
