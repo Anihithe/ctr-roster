@@ -3,6 +3,16 @@
 Toutes les modifications notables apportées à ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.3.4-beta] - 2026-10-03
+
+### 🔒 Sécurité & Étanchéité Multi-Serveurs (Data Isolation)
+- **Élimination complète des fuites de configuration inter-serveurs** :
+  - Suppression définitive du mécanisme de fallback global pour le salon par défaut (`Discord:DefaultChannelId`) et le rôle administrateur (`Discord:AdminRoleId`). Dans une architecture multi-serveurs, un identifiant de canal ou de rôle appartient exclusivement à son serveur hôte et ne doit jamais servir de valeur par défaut globale.
+  - Lorsqu'un serveur n'a pas configuré de salon de sessions, `/ctr-config` affiche désormais strictement `"Non configuré"` (et `/ctr-session-create` publie dans le salon où la commande a été tapée), interdisant toute fuite ou mention de salons d'autres serveurs privés.
+  - Ajout d'un fichier `.dockerignore` pour garantir qu'aucun fichier de configuration local de développement (`appsettings.Development.json`, `.env*`) ne soit embarqué dans les images Docker construites sur les machines de déploiement.
+
+---
+
 ## [0.3.3-beta] - 2026-10-03
 
 ### 🧹 Nettoyage & Craftsmanship (Refactoring)
