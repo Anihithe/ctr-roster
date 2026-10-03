@@ -671,32 +671,4 @@ public class CtrAdminSlashCommands(
         string stateStr = newState ? "activé" : "désactivé";
         await FollowupAsync($"✅ Le jeu **{game.Name}** a été {stateStr} du catalogue.", ephemeral: true);
     }
-
-    [SlashCommand("ctr-game-claim-legacy", "Rattache tous les jeux du catalogue sans serveur (historiques) à ce serveur")]
-    public async Task ClaimLegacyGamesAsync()
-    {
-        await DeferAsync(ephemeral: true);
-
-        if (!await IsAdminAsync())
-        {
-            await FollowupAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
-            return;
-        }
-
-        var guildId = Context.Guild.Id;
-        var legacyGames = await db.Games.Where(g => g.GuildId == 0).ToListAsync();
-        if (legacyGames.Count == 0)
-        {
-            await FollowupAsync("ℹ️ Aucun jeu historique non rattaché (GuildId = 0) n'a été trouvé en base.", ephemeral: true);
-            return;
-        }
-
-        foreach (var g in legacyGames)
-        {
-            g.GuildId = guildId;
-        }
-        await db.SaveChangesAsync();
-
-        await FollowupAsync($"✅ **{legacyGames.Count} jeu(x) historique(s)** ont été rattachés avec succès à ce serveur (**{Context.Guild.Name}**) !", ephemeral: true);
-    }
 }
