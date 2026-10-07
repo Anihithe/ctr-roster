@@ -14,10 +14,12 @@ Ce document a pour vocation d'expliquer simplement et concrètement comment util
    - [Créer une table de jeu](#3-créer-une-table-de-jeu)
    - [Rejoindre ou quitter une table](#4-rejoindre-ou-quitter-une-table)
 3. [Espace Organisateurs & Gérants (Administration)](#-espace-organisateurs--gérants-administration)
-   - [Les droits d'accès](#1-les-droits-daccès)
-   - [Configurer le bot (`/ctr-config`)](#2-configurer-le-bot-ctr-config)
-   - [Gérer les sessions (`/ctr-session-create`, `/ctr-session-capacity`, `/ctr-session-close`)](#3-gérer-les-sessions)
-   - [Gérer le catalogue des jeux (`/ctr-game-*`)](#4-gérer-le-catalogue-de-jeux)
+   - [Installation & Permissions Discord indispensables](#1-installation--permissions-discord-indispensables)
+   - [Mise en place rapide en 4 étapes](#2-mise-en-place-rapide-en-4-étapes)
+   - [Les droits d'accès administratifs](#3-les-droits-daccès-administratifs)
+   - [Configuration avancée du bot (`/ctr-config`)](#4-configuration-avancée-du-bot-ctr-config)
+   - [Gérer les sessions (`/ctr-session-*`)](#5-gérer-les-sessions)
+   - [Gérer le catalogue des jeux (`/ctr-game-*`)](#6-gérer-le-catalogue-de-jeux)
 4. [Règles importantes & FAQ](#-règles-importantes--faq)
 
 ---
@@ -60,25 +62,71 @@ Vous avez un jeu précis en tête et cherchez des partenaires ?
 
 ## 🛠️ Espace Organisateurs & Gérants (Administration)
 
-### 1. Les droits d'accès
-Qui peut administrer le bot ?
-1. Le **propriétaire du serveur** Discord (*Server Owner*), automatiquement et partout.
-2. Les membres ayant la permission Discord **Administrateur** ou **Gérer le serveur**.
-3. Tout membre possédant le **Rôle Admin** spécifiquement désigné via `/ctr-config role_admin:@Role`.
+### 1. Installation & Permissions Discord indispensables
+
+Pour fonctionner et afficher ses fiches interactives, le bot a besoin d'un ensemble précis de permissions Discord.
+
+#### A. Les permissions globales du Bot (sur le serveur) :
+Attribuées au rôle du bot lors de son invitation ou dans les paramètres des rôles Discord :
+- 👁️ **Voir les salons** (*View Channel*) : permet au bot d'accéder aux salons autorisés.
+- 💬 **Envoyer des messages** (*Send Messages*) : indispensable pour publier les Cards et alertes.
+- 🔗 **Intégrer des liens** (*Embed Links*) : **Obligatoire** pour afficher les Cards graphiques (cadres colorés, tables, jauges de capacité).
+- 📜 **Lire l'historique des messages** (*Read Message History*) : **Obligatoire** pour que le bot puisse actualiser et modifier sa propre Card lors des clics sur les boutons.
+- 🔘 **Utiliser les commandes d'application** (*Use Application Commands*) : obligatoire pour exécuter les commandes slash (`/ctr-*`).
+
+#### B. ⚠️ Le piège des salons restreints / salons d'annonces :
+Sur beaucoup de serveurs, le salon dédié aux inscriptions est verrouillé en écriture pour le rôle `@everyone` afin d'éviter le spam.
+> **Règle absolue :**  
+> Si `@everyone` a l'interdiction d'envoyer des messages dans votre salon de sessions, vous **devez impérativement ajouter une dérogation pour le rôle du Bot** dans les paramètres du salon (ou de sa catégorie) :
+> 1. Ouvrez les *Paramètres du salon* ➔ onglet *Permissions*.
+> 2. Ajoutez le rôle de votre Bot (ex: `@CTR-Roster`).
+> 3. Cochez en vert ✅ : **Voir le salon**, **Envoyer des messages**, **Intégrer des liens**, **Lire l'historique des messages**.  
+> *Sans cette dérogation, Discord bloque l'envoi de la Card avec l'erreur `50013: Missing Permissions`.*
 
 ---
 
-### 2. Configurer le bot (`/ctr-config`)
+### 2. Mise en place rapide en 4 étapes
 
-La commande `/ctr-config` permet de personnaliser le fonctionnement du bot pour votre serveur :
+Une fois le bot invité et ses permissions configurées :
+
+1. **Étape 1 — Définir le salon de publication par défaut :**  
+   `/ctr-config salon_sessions:#inscriptions-jeux`  
+   *(Toutes les futures sessions y seront publiées automatiquement).*
+
+2. **Étape 2 — Configurer vos jours d'ouverture et le renouvellement :**  
+   `/ctr-config jours_ouverture:mardi,mercredi,vendredi,samedi frequence:Hebdomadaire (tous les 7 jours)`  
+   *(Le bot saura quels jours sont ouverts et ne planifiera jamais de session un jour fermé).*
+
+3. **Étape 3 — Définir la capacité de tables de votre local (Optionnel) :**  
+   `/ctr-config max_tables_defaut:6`  
+   *(Verrouille automatiquement le bouton `➕ Créer une table` dès que 6 tables sont ouvertes).*
+
+4. **Étape 4 — Publier votre première session de jeu :**  
+   `/ctr-session-create date:2026-10-16 heure:20:00`  
+   *(La Card interactive apparaît immédiatement sur le salon, prête pour les joueurs !)*
+
+---
+
+### 3. Les droits d'accès administratifs
+
+Qui peut exécuter les commandes `/ctr-config`, `/ctr-session-*` et `/ctr-game-*` ?
+1. Le **propriétaire du serveur** Discord (*Server Owner*), automatiquement et sans restriction.
+2. Tout membre possédant la permission Discord **Administrateur** ou **Gérer le serveur**.
+3. Tout membre possédant le **Rôle Administrateur du bot** spécifiquement configuré via `/ctr-config role_admin:@MonRole` (idéal pour déléguer la gestion aux animateurs ou bénévoles sans leur donner les pleins pouvoirs Discord).
+
+---
+
+### 4. Configuration avancée du bot (`/ctr-config`)
+
+La commande `/ctr-config` permet d'ajuster le fonctionnement du bot à tout moment :
 
 | Paramètre | Description | Exemple |
 | :--- | :--- | :--- |
 | `salon_sessions` | Salon par défaut où les cartes de sessions sont publiées | `#inscriptions-jeux` |
-| `salon_restreint` | Limite l'usage des commandes du bot à un unique salon | `#commandes-bot` |
+| `salon_restreint` | Limite l'usage de toutes les commandes du bot à un unique salon | `#commandes-bot` |
 | `reset_restriction_salon` | Supprime la restriction de salon (autorise tous les salons) | `true` |
-| `role_admin` | Rôle Discord habilité à gérer le bot | `@Responsable Jeux` |
-| `auto_renouvellement` | Active ou désactive la reconduction automatique des sessions | `true` ou `false` |
+| `role_admin` | Rôle Discord habilité à administrer le bot | `@Responsable Jeux` |
+| `auto_renouvellement` | Active ou désactive la reconduction automatique de la session suivante | `true` ou `false` |
 | `frequence` | Fréquence de renouvellement automatique (menu guidé) | `Hebdomadaire (tous les 7 jours)` ou `Quotidien (chaque jour ouvert)` |
 | `jours_ouverture` | Jours d'ouverture du local / magasin (séparés par virgules) | `mardi,mercredi,vendredi,samedi` |
 | `reset_jours_ouverture` | Réinitialise les jours d'ouverture (tous les jours ouverts) | `true` |
@@ -87,13 +135,13 @@ La commande `/ctr-config` permet de personnaliser le fonctionnement du bot pour 
 
 ---
 
-### 3. Gérer les sessions
+### 5. Gérer les sessions
 
 #### Créer une session manuelle : `/ctr-session-create`
 - **Exemple simple :**  
   `/ctr-session-create date:2026-10-16 heure:20:00`
 - **Options avancées :**
-  - `salon:#mon-salon` : poster sur un salon spécifique.
+  - `salon:#mon-salon` : poster sur un salon spécifique (au lieu du salon par défaut).
   - `max_tables:4` : définir une capacité spécifique pour cette soirée (écrase la valeur par défaut du serveur).
   - `forcer:true` : forcer la création même si la date tombe sur un jour configuré comme fermé.
 
@@ -108,7 +156,7 @@ Vous souhaitez verrouiller les inscriptions avant l'heure ?
 La Card passe instantanément en mode lecture seule (`🔴 Session clôturée`) et tous les boutons sont désactivés.
 
 #### Récupérer / republier une session orpheline : `/ctr-session-recover`
-Si une session a été créée en base de données mais que son message Discord n'a pas pu être posté (ex: permissions Discord manquantes lors du renouvellement automatique ou message supprimé par erreur) :  
+Si une session a été créée en base de données mais que sa Card n'a pas pu être postée sur Discord (ex: permissions Discord manquantes lors du renouvellement automatique ou message supprimé par erreur) :  
 `/ctr-session-recover [session:<choix>]`  
 - **Sans paramètre** : Détecte automatiquement toutes les sessions orphelines et les republie **chacune strictement sur son salon d'origine respectif** sans aucun risque de mélange ou de regroupement forcé.
 - **`session:`** : Menu déroulant assisté permettant de cibler une session orpheline précise si vous ne souhaitez pas toutes les traiter en bloc.
@@ -116,7 +164,7 @@ Si une session a été créée en base de données mais que son message Discord 
 
 ---
 
-### 4. Gérer le catalogue de jeux
+### 6. Gérer le catalogue de jeux
 
 Le catalogue permet de proposer aux joueurs une liste déroulante claire lors de leurs inscriptions :
 
@@ -140,3 +188,6 @@ Le catalogue permet de proposer aux joueurs une liste déroulante claire lors de
 
 > **Quand les sessions se clôturent-elles automatiquement ?**  
 > ⏰ Une session se clôture automatiquement dès que sa date et son heure de début sont atteintes. Si le renouvellement automatique est activé, la session suivante est générée automatiquement en respectant vos jours d'ouverture.
+
+> **Que faire si le bot affiche "Permissions insuffisantes (50013)" ?**  
+> 🛡️ Allez dans les paramètres du salon Discord concerné (ou de sa catégorie), onglet *Permissions*, ajoutez le rôle de votre Bot et autorisez explicitement **Voir le salon**, **Envoyer des messages** et **Intégrer des liens**. Lancez ensuite `/ctr-session-recover` pour que la Card soit immédiatement publiée !
