@@ -162,4 +162,89 @@ public class SessionLifecycleTests : IDisposable
         // Le jour reste jeudi, pas de glissement vers vendredi
         Assert.Equal(DayOfWeek.Thursday, nextDate.DayOfWeek);
     }
+
+    [Fact]
+    public async Task OrphanSession_Detection_ShouldIdentifySessionsWithZeroMessageId()
+    {
+        ulong guildId = 424242;
+
+        using (var db = new AppDbContext(_options))
+        {
+            // 1. Session normale avec Card postée
+            db.GameSessions.Add(new GameSession
+            {
+                GuildId = guildId,
+                ScheduledDate = DateTime.UtcNow.AddDays(1),
+                DiscordChannelId = 111,
+                DiscordMessageId = 999111,
+                Status = SessionStatus.Open
+            });
+
+            // 2. Session orpheline (ouverte en base mais DiscordMessageId == 0)
+            db.GameSessions.Add(new GameSession
+            {
+                GuildId = guildId,
+                ScheduledDate = DateTime.UtcNow.AddDays(7),
+                DiscordChannelId = 111,
+                DiscordMessageId = 0,
+                Status = SessionStatus.Open
+            });
+
+            // 3. Session clôturée avec MessageId == 0 (non orpheline car déjà fermée)
+            db.GameSessions.Add(new GameSession
+            {
+                GuildId = guildId,
+                ScheduledDate = DateTime.UtcNow.AddDays(-1),
+                DiscordChannelId = 111,
+                DiscordMessageId = 0,
+                Status = SessionStatus.Closed
+            });
+
+            await db.SaveChangesAsync();
+        }
+
+        using (var db = new AppDbContext(_options))
+        {
+            var orphans = await db.GameSessions
+                .Where(s => s.GuildId == guildId && s.Status == SessionStatus.Open && s.DiscordMessageId == 0)
+                .ToListAsync();
+
+            Assert.Single(orphans);
+            Assert.Equal((ulong)0, orphans[0].DiscordMessageId);
+            Assert.Equal(SessionStatus.Open, orphans[0].Status);
+        }
+    }
+
+    [Fact]
+    public void OrphanSession_RecoveryChannelResolution_ShouldPrioritizeCorrectly()
+    {
+        ulong specifiedChannel = 3333;
+        ulong defaultChannel = 2222;
+        ulong sessionChannel = 1111;
+        ulong currentChannel = 9999;
+
+        // Cas 1 : Salon spécifié explicitement par l'admin -> Priorité 1
+        ulong resolved1 = ResolveChannel(specifiedChannel, defaultChannel, sessionChannel, currentChannel);
+        Assert.Equal(specifiedChannel, resolved1);
+
+        // Cas 2 : Aucun salon spécifié mais salon par défaut configuré -> Priorité 2
+        ulong resolved2 = ResolveChannel(0, defaultChannel, sessionChannel, currentChannel);
+        Assert.Equal(defaultChannel, resolved2);
+
+        // Cas 3 : Aucun salon spécifié et aucun salon par défaut -> Priorité 3 (salon session)
+        ulong resolved3 = ResolveChannel(0, 0, sessionChannel, currentChannel);
+        Assert.Equal(sessionChannel, resolved3);
+
+        // Cas 4 : Aucun salon spécifié, aucun défaut, aucun salon session -> Priorité 4 (salon courant)
+        ulong resolved4 = ResolveChannel(0, 0, 0, currentChannel);
+        Assert.Equal(currentChannel, resolved4);
+
+        static ulong ResolveChannel(ulong param, ulong def, ulong session, ulong current)
+        {
+            if (param != 0) return param;
+            if (def != 0) return def;
+            if (session != 0) return session;
+            return current;
+        }
+    }
 }
