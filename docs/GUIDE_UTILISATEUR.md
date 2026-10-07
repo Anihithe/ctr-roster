@@ -107,6 +107,14 @@ Vous souhaitez verrouiller les inscriptions avant l'heure ?
 `/ctr-session-close [date] [heure] [session_id]`  
 La Card passe instantanément en mode lecture seule (`🔴 Session clôturée`) et tous les boutons sont désactivés.
 
+#### Récupérer / republier une session orpheline : `/ctr-session-recover`
+Si une session a été créée en base de données mais que son message Discord n'a pas pu être posté (ex: permissions Discord manquantes lors du renouvellement automatique ou message supprimé par erreur) :  
+`/ctr-session-recover [salon:#mon-salon] [session:<choix>]`  
+- **Sans paramètre** : Détecte automatiquement la session orpheline et la republie sur le salon de sessions par défaut (`salon_sessions` configuré via `/ctr-config`).
+- **`salon:#salon`** : Permet de choisir explicitement sur quel salon poster la Card.
+- **`session:`** : Menu déroulant assisté listant les sessions orphelines identifiées.
+- **Vérification proactive** : Le bot teste à l'avance ses permissions sur le salon (`Voir le salon`, `Envoyer des messages`, `Intégrer des liens`) et vous alerte clairement en cas de droit manquant.
+
 ---
 
 ### 4. Gérer le catalogue de jeux

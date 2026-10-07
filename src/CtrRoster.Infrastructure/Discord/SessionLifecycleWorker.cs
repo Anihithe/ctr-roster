@@ -154,6 +154,10 @@ public class SessionLifecycleWorker(
                 logger.LogInformation("✅ Nouvelle session {SessionId} publiée avec succès sur <#{ChannelId}> (MessageId: {MsgId}).",
                     newSession.Id, channel.Id, postedMessage.Id);
             }
+            catch (global::Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.MissingPermissions || (int)ex.HttpCode == 403)
+            {
+                logger.LogError(ex, "⛔ Permissions Discord insuffisantes (50013: Missing Permissions) pour poster la nouvelle session sur <#{ChannelId}>. La session est enregistrée en base mais orpheline. Utilisez '/ctr-session-recover' après avoir accordé les permissions au bot.", channel.Id);
+            }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Erreur lors de l'ouverture automatique de la prochaine session.");

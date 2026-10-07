@@ -16,6 +16,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using CtrRoster.Presentation.Enums;
+using CtrRoster.Presentation.Modules.Autocomplete;
 
 namespace CtrRoster.Presentation.Modules;
 
@@ -188,17 +189,6 @@ public class CtrAdminSlashCommands(
             hasChanges = true;
         }
 
-        if (renewHours.HasValue)
-        {
-            if (renewHours.Value < 1)
-            {
-                await FollowupAsync("⚠️ L'intervalle en heures doit être au minimum de 1 heure.", ephemeral: true);
-                return;
-            }
-            guildConfig.RenewIntervalHours = renewHours.Value;
-            hasChanges = true;
-        }
-
         if (frequence.HasValue)
         {
             guildConfig.RenewIntervalDays = (int)frequence.Value;
@@ -294,6 +284,14 @@ public class CtrAdminSlashCommands(
         }
         channel ??= (ITextChannel)Context.Channel;
 
+        var botMember = Context.Guild.CurrentUser;
+        var channelPerms = botMember.GetPermissions(channel);
+        if (!channelPerms.ViewChannel || !channelPerms.SendMessages || !channelPerms.EmbedLinks)
+        {
+            await FollowupAsync($"⛔ Permissions insuffisantes sur <#{channel.Id}> : le bot doit disposer des permissions `Voir le salon`, `Envoyer des messages` et `Intégrer des liens` pour pouvoir y créer une session.", ephemeral: true);
+            return;
+        }
+
         try
         {
             // 1. Créer l'entité en base (avec vérification des doublons de créneau et des jours d'ouverture)
@@ -319,6 +317,163 @@ public class CtrAdminSlashCommands(
             logger.LogError(ex, "Erreur lors de la création de session.");
             await FollowupAsync("❌ Erreur lors de la création de la session.", ephemeral: true);
         }
+    }
+
+    [SlashCommand("ctr-session-recover", "Recherche et republie les sessions orphelines (sans message Discord) sur un salon")]
+    public async Task RecoverSessionAsync(
+        [Summary("salon", "Salon où poster la Card (vide = salon de sessions par défaut du serveur)")] ITextChannel? salon = null,
+        [Summary("session", "Session à republier (vide = session orpheline détectée automatiquement)"), Autocomplete(typeof(OrphanSessionAutocompleteHandler))] string? sessionId = null)
+    {
+        await DeferAsync(ephemeral: true);
+
+        if (!await IsAdminAsync())
+        {
+            await FollowupAsync("⛔ Seuls les administrateurs peuvent exécuter cette commande.", ephemeral: true);
+            return;
+        }
+
+        var guildId = Context.Guild.Id;
+        var guildConfig = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == guildId);
+
+        // 1. Identification de la ou des sessions à traiter
+        List<GameSession> sessionsToRecover = [];
+
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            if (!Guid.TryParse(sessionId, out var parsedId))
+            {
+                await FollowupAsync("⚠️ Identifiant de session invalide.", ephemeral: true);
+                return;
+            }
+
+            var specificSession = await db.GameSessions
+                .Include(s => s.Tables).ThenInclude(t => t.Participants)
+                .Include(s => s.Availabilities)
+                .FirstOrDefaultAsync(s => s.Id == parsedId && (s.GuildId == guildId || s.GuildId == 0));
+
+            if (specificSession == null)
+            {
+                await FollowupAsync("⚠️ Session introuvable sur ce serveur.", ephemeral: true);
+                return;
+            }
+
+            sessionsToRecover.Add(specificSession);
+        }
+        else
+        {
+            // Recherche automatique des sessions ouvertes sans message Discord (DiscordMessageId == 0)
+            sessionsToRecover = await db.GameSessions
+                .Include(s => s.Tables).ThenInclude(t => t.Participants)
+                .Include(s => s.Availabilities)
+                .Where(s => (s.GuildId == guildId || s.GuildId == 0) && s.Status == SessionStatus.Open && s.DiscordMessageId == 0)
+                .OrderBy(s => s.ScheduledDate)
+                .ToListAsync();
+
+            if (sessionsToRecover.Count == 0)
+            {
+                await FollowupAsync("ℹ️ Aucune session orpheline (sans message Discord) n'a été détectée sur ce serveur.", ephemeral: true);
+                return;
+            }
+        }
+
+        // 2. Détermination du salon cible
+        ITextChannel? targetChannel = salon;
+
+        if (targetChannel == null)
+        {
+            // Priorité 1 : Salon par défaut configuré via /ctr-config salon_sessions
+            var defaultChannelId = guildConfig?.DefaultChannelId ?? 0;
+            if (defaultChannelId != 0)
+            {
+                targetChannel = Context.Guild.GetTextChannel(defaultChannelId);
+            }
+        }
+
+        if (targetChannel == null)
+        {
+            // Priorité 2 : Salon enregistré à l'origine sur la session
+            if (sessionsToRecover.Count == 1 && sessionsToRecover[0].DiscordChannelId != 0)
+            {
+                targetChannel = Context.Guild.GetTextChannel(sessionsToRecover[0].DiscordChannelId);
+            }
+        }
+
+        if (targetChannel == null)
+        {
+            // Priorité 3 : Salon où la commande a été tapée
+            targetChannel = Context.Channel as ITextChannel;
+        }
+
+        if (targetChannel == null)
+        {
+            await FollowupAsync("❌ Impossible de déterminer un salon textuel valide pour publier la Card. Veuillez spécifier le paramètre `salon:`.", ephemeral: true);
+            return;
+        }
+
+        // 3. Vérification proactive des permissions Discord
+        var currentBotUser = Context.Guild.CurrentUser;
+        var permissions = currentBotUser.GetPermissions(targetChannel);
+
+        if (!permissions.ViewChannel || !permissions.SendMessages || !permissions.EmbedLinks)
+        {
+            var missing = new List<string>();
+            if (!permissions.ViewChannel) missing.Add("Voir le salon");
+            if (!permissions.SendMessages) missing.Add("Envoyer des messages");
+            if (!permissions.EmbedLinks) missing.Add("Intégrer des liens");
+
+            await FollowupAsync(
+                $"⛔ **Permissions insuffisantes sur <#{targetChannel.Id}> !**\n" +
+                $"Le bot ne dispose pas des droits requis pour poster la Card :\n" +
+                string.Join("\n", missing.Select(m => $"• ❌ `{m}`")) + "\n\n" +
+                "👉 Veuillez accorder ces permissions au rôle du bot dans les paramètres du salon ou choisir un autre salon avec le paramètre `salon:`.",
+                ephemeral: true);
+            return;
+        }
+
+        // 4. Publication de chaque session
+        var successReports = new List<string>();
+        var failedReports = new List<string>();
+
+        foreach (var session in sessionsToRecover)
+        {
+            try
+            {
+                var (embed, components) = renderer.BuildSessionCard(session);
+                var postedMessage = await targetChannel.SendMessageAsync(embed: embed, components: components);
+
+                session.DiscordChannelId = targetChannel.Id;
+                session.DiscordMessageId = postedMessage.Id;
+                await db.SaveChangesAsync();
+
+                var dateStr = session.ScheduledDate.ToString("dddd dd MMMM yyyy à HH'h'mm", new CultureInfo("fr-FR"));
+                dateStr = char.ToUpper(dateStr[0]) + dateStr[1..];
+                var cardUrl = $"https://discord.com/channels/{guildId}/{targetChannel.Id}/{postedMessage.Id}";
+                successReports.Add($"• **{dateStr}** : Card publiée sur <#{targetChannel.Id}> ➔ [Voir la Card]({cardUrl})");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erreur lors de la republication de la session {SessionId} sur {ChannelId}.", session.Id, targetChannel.Id);
+                var dateStr = session.ScheduledDate.ToString("dddd dd MMMM à HH:mm", new CultureInfo("fr-FR"));
+                failedReports.Add($"• **{dateStr}** : Échec ({ex.Message})");
+            }
+        }
+
+        // 5. Compte-rendu à l'administrateur
+        var replyEmbed = new EmbedBuilder()
+            .WithTitle("🔄 Récupération des Sessions Orphelines")
+            .WithColor(failedReports.Count == 0 ? Color.Green : Color.Orange);
+
+        if (successReports.Count > 0)
+        {
+            replyEmbed.AddField("✅ Sessions récupérées et publiées", string.Join("\n", successReports), inline: false);
+        }
+
+        if (failedReports.Count > 0)
+        {
+            replyEmbed.AddField("❌ Erreurs de publication", string.Join("\n", failedReports), inline: false);
+        }
+
+        await FollowupAsync(embed: replyEmbed.Build(), ephemeral: true);
     }
 
     [SlashCommand("ctr-session-capacity", "Définit ou modifie le nombre maximum de tables pour une session")]
