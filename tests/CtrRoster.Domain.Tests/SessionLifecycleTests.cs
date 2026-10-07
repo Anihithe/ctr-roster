@@ -216,35 +216,35 @@ public class SessionLifecycleTests : IDisposable
     }
 
     [Fact]
-    public void OrphanSession_RecoveryChannelResolution_ShouldPrioritizeCorrectly()
+    public async Task OrphanSession_ShouldPreserveIndividualChannelPerSession()
     {
-        ulong specifiedChannel = 3333;
-        ulong defaultChannel = 2222;
-        ulong sessionChannel = 1111;
-        ulong currentChannel = 9999;
+        ulong guildId = 424242;
+        ulong channelJdr = 101;
+        ulong channelPlateau = 102;
+        ulong channelFigurines = 103;
 
-        // Cas 1 : Salon spécifié explicitement par l'admin -> Priorité 1
-        ulong resolved1 = ResolveChannel(specifiedChannel, defaultChannel, sessionChannel, currentChannel);
-        Assert.Equal(specifiedChannel, resolved1);
-
-        // Cas 2 : Aucun salon spécifié mais salon par défaut configuré -> Priorité 2
-        ulong resolved2 = ResolveChannel(0, defaultChannel, sessionChannel, currentChannel);
-        Assert.Equal(defaultChannel, resolved2);
-
-        // Cas 3 : Aucun salon spécifié et aucun salon par défaut -> Priorité 3 (salon session)
-        ulong resolved3 = ResolveChannel(0, 0, sessionChannel, currentChannel);
-        Assert.Equal(sessionChannel, resolved3);
-
-        // Cas 4 : Aucun salon spécifié, aucun défaut, aucun salon session -> Priorité 4 (salon courant)
-        ulong resolved4 = ResolveChannel(0, 0, 0, currentChannel);
-        Assert.Equal(currentChannel, resolved4);
-
-        static ulong ResolveChannel(ulong param, ulong def, ulong session, ulong current)
+        using (var db = new AppDbContext(_options))
         {
-            if (param != 0) return param;
-            if (def != 0) return def;
-            if (session != 0) return session;
-            return current;
+            db.GameSessions.AddRange(
+                new GameSession { GuildId = guildId, ScheduledDate = DateTime.UtcNow.AddDays(1), DiscordChannelId = channelJdr, DiscordMessageId = 0, Status = SessionStatus.Open },
+                new GameSession { GuildId = guildId, ScheduledDate = DateTime.UtcNow.AddDays(2), DiscordChannelId = channelPlateau, DiscordMessageId = 0, Status = SessionStatus.Open },
+                new GameSession { GuildId = guildId, ScheduledDate = DateTime.UtcNow.AddDays(3), DiscordChannelId = channelFigurines, DiscordMessageId = 0, Status = SessionStatus.Open }
+            );
+            await db.SaveChangesAsync();
+        }
+
+        using (var db = new AppDbContext(_options))
+        {
+            var orphans = await db.GameSessions
+                .Where(s => s.GuildId == guildId && s.Status == SessionStatus.Open && s.DiscordMessageId == 0)
+                .OrderBy(s => s.ScheduledDate)
+                .ToListAsync();
+
+            Assert.Equal(3, orphans.Count);
+            // Chaque session conserve son salon d'origine sans mélange ni regroupement forcé
+            Assert.Equal(channelJdr, orphans[0].DiscordChannelId);
+            Assert.Equal(channelPlateau, orphans[1].DiscordChannelId);
+            Assert.Equal(channelFigurines, orphans[2].DiscordChannelId);
         }
     }
 }
