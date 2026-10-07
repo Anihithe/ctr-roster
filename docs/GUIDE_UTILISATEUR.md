@@ -109,11 +109,10 @@ La Card passe instantanément en mode lecture seule (`🔴 Session clôturée`) 
 
 #### Récupérer / republier une session orpheline : `/ctr-session-recover`
 Si une session a été créée en base de données mais que son message Discord n'a pas pu être posté (ex: permissions Discord manquantes lors du renouvellement automatique ou message supprimé par erreur) :  
-`/ctr-session-recover [salon:#mon-salon] [session:<choix>]`  
-- **Sans paramètre** : Détecte automatiquement la session orpheline et la republie sur le salon de sessions par défaut (`salon_sessions` configuré via `/ctr-config`).
-- **`salon:#salon`** : Permet de choisir explicitement sur quel salon poster la Card.
-- **`session:`** : Menu déroulant assisté listant les sessions orphelines identifiées.
-- **Vérification proactive** : Le bot teste à l'avance ses permissions sur le salon (`Voir le salon`, `Envoyer des messages`, `Intégrer des liens`) et vous alerte clairement en cas de droit manquant.
+`/ctr-session-recover [session:<choix>]`  
+- **Sans paramètre** : Détecte automatiquement toutes les sessions orphelines et les republie **chacune strictement sur son salon d'origine respectif** sans aucun risque de mélange ou de regroupement forcé.
+- **`session:`** : Menu déroulant assisté permettant de cibler une session orpheline précise si vous ne souhaitez pas toutes les traiter en bloc.
+- **Vérification proactive** : Pour chaque session, le bot teste à l'avance ses permissions sur le salon dédié (`Voir le salon`, `Envoyer des messages`, `Intégrer des liens`) et vous alerte précisément en cas de droit manquant sur un salon sans bloquer les autres.
 
 ---
 

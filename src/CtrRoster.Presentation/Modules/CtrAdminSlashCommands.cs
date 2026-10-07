@@ -319,10 +319,9 @@ public class CtrAdminSlashCommands(
         }
     }
 
-    [SlashCommand("ctr-session-recover", "Recherche et republie les sessions orphelines (sans message Discord) sur un salon")]
+    [SlashCommand("ctr-session-recover", "Recherche et republie les sessions orphelines (sans message Discord) sur leur salon respectif")]
     public async Task RecoverSessionAsync(
-        [Summary("salon", "Salon où poster la Card (vide = salon de sessions par défaut du serveur)")] ITextChannel? salon = null,
-        [Summary("session", "Session à republier (vide = session orpheline détectée automatiquement)"), Autocomplete(typeof(OrphanSessionAutocompleteHandler))] string? sessionId = null)
+        [Summary("session", "Session à republier (vide = toutes les sessions orphelines détectées)"), Autocomplete(typeof(OrphanSessionAutocompleteHandler))] string? sessionId = null)
     {
         await DeferAsync(ephemeral: true);
 
@@ -333,7 +332,6 @@ public class CtrAdminSlashCommands(
         }
 
         var guildId = Context.Guild.Id;
-        var guildConfig = await db.GuildConfigs.FirstOrDefaultAsync(c => c.GuildId == guildId);
 
         // 1. Identification de la ou des sessions à traiter
         List<GameSession> sessionsToRecover = [];
@@ -376,92 +374,64 @@ public class CtrAdminSlashCommands(
             }
         }
 
-        // 2. Détermination du salon cible
-        ITextChannel? targetChannel = salon;
-
-        if (targetChannel == null)
-        {
-            // Priorité 1 : Salon par défaut configuré via /ctr-config salon_sessions
-            var defaultChannelId = guildConfig?.DefaultChannelId ?? 0;
-            if (defaultChannelId != 0)
-            {
-                targetChannel = Context.Guild.GetTextChannel(defaultChannelId);
-            }
-        }
-
-        if (targetChannel == null)
-        {
-            // Priorité 2 : Salon enregistré à l'origine sur la session
-            if (sessionsToRecover.Count == 1 && sessionsToRecover[0].DiscordChannelId != 0)
-            {
-                targetChannel = Context.Guild.GetTextChannel(sessionsToRecover[0].DiscordChannelId);
-            }
-        }
-
-        if (targetChannel == null)
-        {
-            // Priorité 3 : Salon où la commande a été tapée
-            targetChannel = Context.Channel as ITextChannel;
-        }
-
-        if (targetChannel == null)
-        {
-            await FollowupAsync("❌ Impossible de déterminer un salon textuel valide pour publier la Card. Veuillez spécifier le paramètre `salon:`.", ephemeral: true);
-            return;
-        }
-
-        // 3. Vérification proactive des permissions Discord
-        var currentBotUser = Context.Guild.CurrentUser;
-        var permissions = currentBotUser.GetPermissions(targetChannel);
-
-        if (!permissions.ViewChannel || !permissions.SendMessages || !permissions.EmbedLinks)
-        {
-            var missing = new List<string>();
-            if (!permissions.ViewChannel) missing.Add("Voir le salon");
-            if (!permissions.SendMessages) missing.Add("Envoyer des messages");
-            if (!permissions.EmbedLinks) missing.Add("Intégrer des liens");
-
-            await FollowupAsync(
-                $"⛔ **Permissions insuffisantes sur <#{targetChannel.Id}> !**\n" +
-                $"Le bot ne dispose pas des droits requis pour poster la Card :\n" +
-                string.Join("\n", missing.Select(m => $"• ❌ `{m}`")) + "\n\n" +
-                "👉 Veuillez accorder ces permissions au rôle du bot dans les paramètres du salon ou choisir un autre salon avec le paramètre `salon:`.",
-                ephemeral: true);
-            return;
-        }
-
-        // 4. Publication de chaque session
+        // 2. Publication de chaque session strictement sur son salon d'origine respectif
         var successReports = new List<string>();
         var failedReports = new List<string>();
+        var currentBotUser = Context.Guild.CurrentUser;
 
         foreach (var session in sessionsToRecover)
         {
+            var dateStr = session.ScheduledDate.ToString("dddd dd MMMM yyyy à HH'h'mm", new CultureInfo("fr-FR"));
+            dateStr = char.ToUpper(dateStr[0]) + dateStr[1..];
+
+            // Résolution du salon d'origine dédié à cette session
+            ITextChannel? targetChannel = null;
+            if (session.DiscordChannelId != 0)
+            {
+                targetChannel = Context.Guild.GetTextChannel(session.DiscordChannelId);
+            }
+
+            if (targetChannel == null)
+            {
+                failedReports.Add($"• **{dateStr}** : Salon Discord `{session.DiscordChannelId}` introuvable ou supprimé du serveur.");
+                continue;
+            }
+
+            // Vérification proactive des permissions sur ce salon spécifique
+            var permissions = currentBotUser.GetPermissions(targetChannel);
+            if (!permissions.ViewChannel || !permissions.SendMessages || !permissions.EmbedLinks)
+            {
+                var missing = new List<string>();
+                if (!permissions.ViewChannel) missing.Add("Voir le salon");
+                if (!permissions.SendMessages) missing.Add("Envoyer des messages");
+                if (!permissions.EmbedLinks) missing.Add("Intégrer des liens");
+
+                failedReports.Add($"• **{dateStr}** sur <#{targetChannel.Id}> : Permissions insuffisantes ({string.Join(", ", missing)}).");
+                continue;
+            }
+
             try
             {
                 var (embed, components) = renderer.BuildSessionCard(session);
                 var postedMessage = await targetChannel.SendMessageAsync(embed: embed, components: components);
 
-                session.DiscordChannelId = targetChannel.Id;
                 session.DiscordMessageId = postedMessage.Id;
                 await db.SaveChangesAsync();
 
-                var dateStr = session.ScheduledDate.ToString("dddd dd MMMM yyyy à HH'h'mm", new CultureInfo("fr-FR"));
-                dateStr = char.ToUpper(dateStr[0]) + dateStr[1..];
                 var cardUrl = $"https://discord.com/channels/{guildId}/{targetChannel.Id}/{postedMessage.Id}";
-                successReports.Add($"• **{dateStr}** : Card publiée sur <#{targetChannel.Id}> ➔ [Voir la Card]({cardUrl})");
+                successReports.Add($"• **{dateStr}** : Card republiée sur <#{targetChannel.Id}> ➔ [Voir la Card]({cardUrl})");
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Erreur lors de la republication de la session {SessionId} sur {ChannelId}.", session.Id, targetChannel.Id);
-                var dateStr = session.ScheduledDate.ToString("dddd dd MMMM à HH:mm", new CultureInfo("fr-FR"));
-                failedReports.Add($"• **{dateStr}** : Échec ({ex.Message})");
+                failedReports.Add($"• **{dateStr}** sur <#{targetChannel.Id}> : Échec ({ex.Message})");
             }
         }
 
-        // 5. Compte-rendu à l'administrateur
+        // 3. Compte-rendu à l'administrateur
         var replyEmbed = new EmbedBuilder()
             .WithTitle("🔄 Récupération des Sessions Orphelines")
-            .WithColor(failedReports.Count == 0 ? Color.Green : Color.Orange);
+            .WithColor(failedReports.Count == 0 ? Color.Green : (successReports.Count > 0 ? Color.Orange : Color.Red));
 
         if (successReports.Count > 0)
         {
@@ -470,7 +440,7 @@ public class CtrAdminSlashCommands(
 
         if (failedReports.Count > 0)
         {
-            replyEmbed.AddField("❌ Erreurs de publication", string.Join("\n", failedReports), inline: false);
+            replyEmbed.AddField("⚠️ Échecs ou permissions manquantes", string.Join("\n", failedReports), inline: false);
         }
 
         await FollowupAsync(embed: replyEmbed.Build(), ephemeral: true);

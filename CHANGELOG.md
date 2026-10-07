@@ -8,10 +8,8 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 ### ✨ Nouvelles Fonctionnalités & Résilience (Features)
 - **Commande de récupération des sessions orphelines (`/ctr-session-recover`)** :
   - Détection automatique et republication des sessions actives créées en base mais dont le message Discord n'a pas pu être posté (ex: permissions Discord manquantes lors d'un renouvellement automatique, incident réseau ou suppression accidentelle de Card).
-  - Routage intelligent du salon de publication :
-    - Prise en compte du paramètre `salon:#mon-salon` si spécifié par l'administrateur.
-    - Sinon, bascule par défaut sur le salon de sessions configuré sur le serveur (`DefaultChannelId`).
-    - Sinon, repli sur le salon enregistré sur la session ou sur le salon courant.
+  - **Conservation stricte du salon d'origine de chaque session** :
+    - Chaque session orpheline est republiée **exclusivement sur son propre salon d'origine** (`session.DiscordChannelId`), éliminant tout risque de collision ou de regroupement forcé de sessions provenant de salons distincts (ex: `#jdr`, `#plateau`, etc.).
   - **Menu déroulant assisté (`Autocomplete`)** :
     - Sélection interactive de la session orpheline souhaitée via `OrphanSessionAutocompleteHandler`.
     - Si aucune session n'est précisée, traite automatiquement la session orpheline trouvée.
