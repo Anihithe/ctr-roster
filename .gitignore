@@ -41,3 +41,5 @@ Thumbs.db
 .copilot/
 *.aiconfig
 *.prompt
+AGENTS.md
+GEMINI.md
