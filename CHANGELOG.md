@@ -3,6 +3,16 @@
 Toutes les modifications notables apportées à ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.5.1-beta] - 2026-10-08
+
+### 📖 Documentation & Affinements Administrateur
+- **Guide complet de mise en place & Permissions Discord** :
+  - Ajout d'une section dédiée détaillant les permissions globales indispensables au bot (`Voir les salons`, `Envoyer des messages`, `Intégrer des liens`, `Lire l'historique des messages`, `Utiliser les commandes d'application`).
+  - Alerte explicative et procédure pas-à-pas pour la configuration des salons restreints / privés / sans écriture afin de prévenir toute erreur `50013: Missing Permissions`.
+  - Intégration d'un guide de mise en place rapide en 4 étapes pour les nouveaux administrateurs dans [`docs/GUIDE_UTILISATEUR.md`](file:///mnt/Stockage/projects/dev/ctr-roster/docs/GUIDE_UTILISATEUR.md).
+
+---
+
 ## [0.5.0-beta] - 2026-10-07
 
 ### ✨ Nouvelles Fonctionnalités & Résilience (Features)
