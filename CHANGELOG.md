@@ -3,6 +3,26 @@
 Toutes les modifications notables apportées à ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.5.0-beta] - 2026-10-07
+
+### ✨ Nouvelles Fonctionnalités & Résilience (Features)
+- **Commande de récupération des sessions orphelines (`/ctr-session-recover`)** :
+  - Détection automatique et republication des sessions actives créées en base mais dont le message Discord n'a pas pu être posté (ex: permissions Discord manquantes lors d'un renouvellement automatique, incident réseau ou suppression accidentelle de Card).
+  - Routage intelligent du salon de publication :
+    - Prise en compte du paramètre `salon:#mon-salon` si spécifié par l'administrateur.
+    - Sinon, bascule par défaut sur le salon de sessions configuré sur le serveur (`DefaultChannelId`).
+    - Sinon, repli sur le salon enregistré sur la session ou sur le salon courant.
+  - **Menu déroulant assisté (`Autocomplete`)** :
+    - Sélection interactive de la session orpheline souhaitée via `OrphanSessionAutocompleteHandler`.
+    - Si aucune session n'est précisée, traite automatiquement la session orpheline trouvée.
+- **Vérification proactive des permissions Discord** :
+  - Contrôle en amont des permissions requises (`Voir le salon`, `Envoyer des messages`, `Intégrer des liens`) dans `/ctr-session-create` et `/ctr-session-recover`.
+  - En cas de permissions insuffisantes, le bot prévient immédiatement l'administrateur avec le détail précis des droits manquants plutôt que de déclencher une exception brute `50013: Missing Permissions`.
+- **Journalisation enrichie du worker (`SessionLifecycleWorker`)** :
+  - Capture explicite des erreurs HTTP 403 / 50013 avec invitation claire à utiliser `/ctr-session-recover` dès le rétablissement des droits.
+
+---
+
 ## [0.4.0-beta] - 2026-10-03
 
 ### ✨ Nouvelles Fonctionnalités & Ergonomie (Features)
